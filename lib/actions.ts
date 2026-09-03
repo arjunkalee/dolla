@@ -303,7 +303,17 @@ export async function importStatement(csvText: string): Promise<BootstrapRespons
   return { ...pack(state), importMeta: meta };
 }
 
-export async function resetData(mode: "sample" | "empty" | "keep-settings" | "real"): Promise<BootstrapResponse> {
+export type ResetMode = "sample" | "empty" | "keep-settings" | "real";
+
+/** Profile sends `"real"`; `"sample"` is the same Aug 29 snapshot. Unknown modes also reload it. */
+export function parseResetMode(mode: unknown): ResetMode {
+  if (mode === "empty" || mode === "keep-settings" || mode === "real" || mode === "sample") {
+    return mode;
+  }
+  return "real";
+}
+
+export async function resetData(mode: ResetMode): Promise<BootstrapResponse> {
   const current = await loadState();
   let next: AppState;
   if (mode === "empty") {

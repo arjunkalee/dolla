@@ -22,6 +22,7 @@ function enqueue<T>(work: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/** Vercel KV marketplace (`KV_REST_API_*`) or Upstash REST (`UPSTASH_REDIS_REST_*`). */
 function kvCredentials(): { url: string; token: string } | null {
   const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -86,12 +87,14 @@ async function ensureTursoTable() {
   );
 }
 
-function assertDurableWrite() {
+export const DURABLE_WRITE_REFUSAL =
+  "Dolla will not write to /tmp. Attach Upstash Redis (`KV_REST_API_*` or `UPSTASH_REDIS_REST_*`) or Turso (`TURSO_*`) to the dolla-now Vercel project, then redeploy.";
+
+/** Throws on Vercel unless Turso or Upstash/KV is configured. Never falls back to /tmp. */
+export function assertDurableWrite() {
   const info = storeInfo();
   if (onVercel() && !info.durable) {
-    throw new Error(
-      "Dolla will not write to /tmp. Attach Upstash Redis to the dolla-now Vercel project (Storage → Create Database → Redis → Connect to dolla-now), then redeploy."
-    );
+    throw new Error(DURABLE_WRITE_REFUSAL);
   }
 }
 
@@ -120,6 +123,7 @@ async function readRaw(): Promise<AppState | null> {
   }
 }
 
+/** Persist path for purchases, chat money edits, and Profile → Reload starting ledger. */
 async function writeRaw(state: AppState): Promise<void> {
   assertDurableWrite();
   const payload = JSON.stringify(state, null, 2);

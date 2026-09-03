@@ -63,6 +63,18 @@ export function ProfileScreen() {
     window.location.href = "/login";
   }
 
+  async function runReset(mode: "real" | "empty" | "keep-settings", ok: string) {
+    setBusy(true);
+    try {
+      await resetData(mode);
+      toast.success(ok);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Reset failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <header className="flex items-center gap-4">
@@ -179,12 +191,9 @@ export function ProfileScreen() {
             variant="outline"
             className="h-12 w-full text-base"
             disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await resetData("keep-settings");
-              toast.success("Purchases cleared. Checking, bills, and envelopes kept.");
-              setBusy(false);
-            }}
+            onClick={() =>
+              runReset("keep-settings", "Purchases cleared. Checking, bills, and envelopes kept.")
+            }
           >
             Clear purchases
           </Button>
@@ -192,12 +201,7 @@ export function ProfileScreen() {
             variant="outline"
             className="h-12 w-full text-base"
             disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await resetData("real");
-              toast.success("Reloaded the Aug 29 starting ledger.");
-              setBusy(false);
-            }}
+            onClick={() => runReset("real", "Reloaded the Aug 29 starting ledger.")}
           >
             Reload starting ledger
           </Button>
@@ -205,12 +209,7 @@ export function ProfileScreen() {
             variant="ghost"
             className="h-12 w-full text-base"
             disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await resetData("empty");
-              toast.success("Blank month. Envelopes kept, checking zeroed.");
-              setBusy(false);
-            }}
+            onClick={() => runReset("empty", "Blank month. Envelopes kept, checking zeroed.")}
           >
             Start from a blank month
           </Button>

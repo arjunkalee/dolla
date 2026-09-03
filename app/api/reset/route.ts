@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
-import { resetData } from "@/lib/actions";
+import { parseResetMode, resetData } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
-  const mode = body.mode === "empty" || body.mode === "keep-settings" ? body.mode : "sample";
-  const data = await resetData(mode);
-  return NextResponse.json(data);
+  try {
+    const body = await request.json().catch(() => ({}));
+    const mode = parseResetMode(body.mode);
+    const data = await resetData(mode);
+    return NextResponse.json(data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not reset the ledger.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 }

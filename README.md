@@ -39,9 +39,10 @@ Open [http://localhost:3000](http://localhost:3000). Default local PIN is `4826`
 ```bash
 npm run build
 npm start
+npm run test:store
 ```
 
-Local data is written to `data/dolla.json` (gitignored).
+Local data is written to `data/dolla.json` (gitignored). On Vercel, `saveState` / `resetData("real")` go through Turso or Upstash — never `/tmp`.
 
 ## Environment variables
 
@@ -49,10 +50,12 @@ Local data is written to `data/dolla.json` (gitignored).
 |---|---|---|
 | `DOLLA_PIN` | Yes in production | Unlock PIN or password. Local default is `4826` if unset. |
 | `DOLLA_SESSION_SECRET` | Yes in production | Signs the session cookie. Use a long random string. |
-| `TURSO_DATABASE_URL` | Recommended on Vercel | libSQL/Turso URL for a durable ledger. |
+| `TURSO_DATABASE_URL` | Turso option | libSQL/Turso URL. Either Turso or Upstash/KV is required for writes on Vercel. |
 | `TURSO_AUTH_TOKEN` | With Turso | Turso auth token. |
-| `KV_REST_API_URL` | Alternative to Turso | Vercel KV / Upstash Redis. |
-| `KV_REST_API_TOKEN` | With KV | KV token. |
+| `KV_REST_API_URL` | Upstash/KV option | Vercel KV / Upstash Redis REST URL. Same role as `UPSTASH_REDIS_REST_URL`. |
+| `KV_REST_API_TOKEN` | With KV | Pair with `KV_REST_API_URL`. Same role as `UPSTASH_REDIS_REST_TOKEN`. |
+| `UPSTASH_REDIS_REST_URL` | Alias of `KV_REST_API_URL` | Injected by Upstash. `lib/store.ts` accepts either URL name. |
+| `UPSTASH_REDIS_REST_TOKEN` | Alias of `KV_REST_API_TOKEN` | Pair with `UPSTASH_REDIS_REST_URL`. |
 
 On Vercel, pick **either** Turso **or** Upstash Redis. Without one of those, Dolla refuses to write (it will not use `/tmp`). The live project is **dolla-now** — do not create another project.
 
