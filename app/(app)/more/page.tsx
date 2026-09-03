@@ -1,5 +1,5 @@
-import { MoreScreen } from "@/components/more-screen";
+import { redirect } from "next/navigation";
 
 export default function MorePage() {
-  return <MoreScreen />;
+  redirect("/profile");
 }

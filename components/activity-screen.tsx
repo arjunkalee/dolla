@@ -44,7 +44,7 @@ export function ActivityScreen() {
 
       {expenses.length === 0 ? (
         <p className="rounded-2xl bg-card px-4 py-10 text-center text-sm text-muted-foreground ring-1 ring-foreground/10">
-          No purchases yet. Log one with the green button, or import a CSV in More.
+          No purchases yet. Log one with the green button, or import a CSV in Profile.
         </p>
       ) : (
         <div className="space-y-2">

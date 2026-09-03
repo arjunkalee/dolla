@@ -4,16 +4,42 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatCents } from "@/lib/money";
+import { formatLongDate } from "@/lib/dates";
 import { useDolla } from "./dolla-provider";
 
-export function MoreScreen() {
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
+}
+
+const TOOL_LINKS = [
+  { href: "/", label: "Leftover math" },
+  { href: "/budget", label: "Envelopes" },
+  { href: "/activity", label: "All activity" },
+  { href: "/savings", label: "eTrade / Roth / HYSA" },
+  { href: "/split", label: "Split" },
+  { href: "/chat", label: "Chat" },
+  { href: "/month", label: "Calendar" },
+] as const;
+
+export function ProfileScreen() {
   const { state, insights, importCsv, resetData } = useDolla();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const router = useRouter();
 
   if (!state || !insights) return null;
+
+  const upcoming = [...state.bills]
+    .filter((b) => !b.paid)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const nextBill = upcoming[0];
+  const billsTotalCents = upcoming.reduce((sum, b) => sum + b.amountCents, 0);
 
   async function onFile(file: File | undefined) {
     if (!file) return;
@@ -39,35 +65,71 @@ export function MoreScreen() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="text-[1.75rem] font-semibold tracking-tight">More</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {state.profile.name} · {state.profile.timezone}
-        </p>
+      <header className="flex items-center gap-4">
+        <div
+          aria-hidden
+          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary/15 text-lg font-semibold tracking-tight text-primary"
+        >
+          {initialsFromName(state.profile.name)}
+        </div>
+        <div className="min-w-0">
+          <h1 className="truncate text-[1.75rem] font-semibold tracking-tight">
+            {state.profile.name}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">{state.profile.timezone}</p>
+        </div>
       </header>
 
-      <section className="divide-y divide-border/80 overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-        <Link href="/" className="flex min-h-14 items-center px-4 text-base">
-          Leftover math
-        </Link>
-        <Link href="/split" className="flex min-h-14 items-center px-4 text-base">
-          Split this paycheck
-        </Link>
-        <Link href="/chat" className="flex min-h-14 items-center px-4 text-base">
-          Chat
-        </Link>
-        <Link href="/month" className="flex min-h-14 items-center px-4 text-base">
-          Calendar
-        </Link>
-        <Link href="/budget" className="flex min-h-14 items-center px-4 text-base">
-          Envelopes (logged spend)
-        </Link>
-        <Link href="/activity" className="flex min-h-14 items-center px-4 text-base">
-          All activity
-        </Link>
-        <Link href="/savings" className="flex min-h-14 items-center px-4 text-base">
-          eTrade / Roth / HYSA
-        </Link>
+      <section className="grid grid-cols-2 gap-3">
+        <article className="rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
+          <p className="text-sm text-muted-foreground">Checking</p>
+          <p className="mt-1 font-mono text-xl font-semibold tracking-tight">
+            {formatCents(state.checkingCents)}
+          </p>
+        </article>
+        <article className="rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
+          <p className="text-sm text-muted-foreground">Biweekly paycheck</p>
+          <p className="mt-1 font-mono text-xl font-semibold tracking-tight">
+            {formatCents(insights.paycheckNetCents)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Next payday {formatLongDate(insights.nextPayday)}
+          </p>
+        </article>
+        <article className="col-span-2 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
+          <p className="text-sm text-muted-foreground">Upcoming bills</p>
+          {upcoming.length === 0 ? (
+            <p className="mt-1 text-sm text-muted-foreground">No unpaid bills.</p>
+          ) : (
+            <>
+              <p className="mt-1 font-mono text-xl font-semibold tracking-tight">
+                {formatCents(billsTotalCents)}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {upcoming.length} unpaid
+                {nextBill
+                  ? ` · next ${nextBill.name} ${formatLongDate(nextBill.dueDate)}`
+                  : ""}
+              </p>
+            </>
+          )}
+        </article>
+      </section>
+
+      <section>
+        <h2 className="mb-2 px-1 text-sm font-medium">Accounts & tools</h2>
+        <div className="divide-y divide-border/80 overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
+          {TOOL_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="flex min-h-14 items-center justify-between gap-3 px-4 text-base"
+            >
+              {link.label}
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+          ))}
+        </div>
       </section>
 
       <section className="rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">

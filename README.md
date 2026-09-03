@@ -2,7 +2,7 @@
 
 Personal money for one person — Arjun Kale, America/Chicago. Monthly budgets, a biweekly paycheck plan, live purchase logging, and savings set-asides. Built as an iPhone-first PWA and meant to deploy on Vercel.
 
-This is Arjun’s real ledger. Checking, dated bills, and envelopes load as of Aug 29, 2026. More → Reload starting ledger resets to that snapshot.
+This is Arjun’s real ledger. Checking, dated bills, and envelopes load as of Aug 29, 2026. Profile → Reload starting ledger resets to that snapshot.
 
 ## What it does
 
@@ -89,7 +89,7 @@ The web app manifest and Apple touch icon are included. A service worker caches 
 
 ## First-week setup
 
-The starting ledger is already his Aug 29, 2026 numbers. Confirm checking, tomorrow’s cards, rent due date, and the Amex toggle. Then log real spend. **More → Reload starting ledger** snaps back to that snapshot. Chat can change the same numbers; it never invents transactions.
+The starting ledger is already his Aug 29, 2026 numbers. Confirm checking, tomorrow’s cards, rent due date, and the Amex toggle. Then log real spend. **Profile → Reload starting ledger** snaps back to that snapshot. Chat can change the same numbers; it never invents transactions.
 
 Leftover from this paycheck (Aug 29 snapshot, Amex next check, envelopes not counted):
 
