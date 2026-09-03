@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, Layers, MessageCircle, Receipt, Settings } from "lucide-react";
+import { CalendarDays, CircleUser, Layers, MessageCircle, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDolla } from "./dolla-provider";
 import { LogPurchaseDrawer } from "./log-purchase";
@@ -11,7 +11,7 @@ const TABS = [
   { href: "/month", label: "Calendar", icon: CalendarDays },
   { href: "/split", label: "Split", icon: Layers },
   { href: "/chat", label: "Chat", icon: MessageCircle },
-  { href: "/more", label: "More", icon: Settings },
+  { href: "/profile", label: "Profile", icon: CircleUser },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -63,7 +63,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {TABS.slice(2).map((tab) => {
             const extraActive =
               (tab.href === "/split" && pathname === "/plan") ||
-              (tab.href === "/more" &&
+              (tab.href === "/profile" &&
                 ["/", "/plan", "/activity", "/savings", "/budget"].includes(pathname));
             return (
               <TabLink
