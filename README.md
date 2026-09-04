@@ -24,7 +24,7 @@ There is **no** consumer Apple Pay API for a website. Apple Pay does not expose 
 Instead:
 
 1. Log a purchase in the app (fast on iPhone).
-2. Import a CSV export from Wallet (Apple Card) or your bank. A sample file lives at `public/sample-apple-card.csv`.
+2. Import a CSV export from Wallet (Apple Card) or your bank — upload or paste on Profile. A sample file lives at `public/sample-apple-card.csv`. Re-import of the same rows is skipped (`date|amountCents|normalizedMerchant`).
 
 ## Local development
 
@@ -40,6 +40,7 @@ Open [http://localhost:3000](http://localhost:3000). Default local PIN is `4826`
 npm run build
 npm start
 npm run test:store
+npm run test:csv
 ```
 
 Local data is written to `data/dolla.json` (gitignored). On Vercel, `saveState` / `resetData("real")` go through Turso or Upstash — never `/tmp`.
