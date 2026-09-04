@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatCents } from "@/lib/money";
 import { formatLongDate } from "@/lib/dates";
+import { expenseEnvelopeLabel } from "@/lib/categorize";
 import type { CategoryId } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useDolla } from "./dolla-provider";
@@ -50,7 +51,7 @@ export function ActivityScreen() {
         <div className="space-y-2">
           {expenses.map((e) => {
             const open = openId === e.id;
-            const cat = state.categories.find((c) => c.id === e.categoryId);
+            const envelope = expenseEnvelopeLabel(state.categories, e);
             return (
               <article key={e.id} className="rounded-2xl bg-card ring-1 ring-foreground/10">
                 <button
@@ -61,7 +62,7 @@ export function ActivityScreen() {
                   <div className="min-w-0">
                     <p className="truncate font-medium">{e.merchant}</p>
                     <p className="text-xs text-muted-foreground">
-                      {cat?.name}
+                      {envelope}
                       {e.autoCategorized ? " · auto" : ""} · {formatLongDate(e.date)}
                       {e.note ? ` · ${e.note}` : ""}
                     </p>

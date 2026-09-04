@@ -38,7 +38,7 @@ type DollaContextValue = {
   setBillFromThisCheck: (id: string, fromThisCheck: boolean) => Promise<void>;
   saveSavingsTargets: (savings: AppState["savings"]) => Promise<void>;
   confirmSetAsides: (amounts: Partial<Record<SavingsId, number>>) => Promise<void>;
-  importCsv: (file: File) => Promise<{ added: number; skipped: number; duplicates: number; errors: string[] }>;
+  importCsv: (csvText: string) => Promise<{ added: number; skipped: number; duplicates: number; errors: string[] }>;
   resetData: (mode: "sample" | "empty" | "keep-settings" | "real") => Promise<void>;
   sendChat: (text: string) => Promise<void>;
 };
@@ -226,10 +226,12 @@ export function DollaProvider({ children }: { children: React.ReactNode }) {
   );
 
   const importCsv = useCallback(
-    async (file: File) => {
-      const form = new FormData();
-      form.set("file", file);
-      const res = await fetch("/api/import", { method: "POST", body: form });
+    async (csvText: string) => {
+      const res = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: csvText }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Import failed");
       apply(data);

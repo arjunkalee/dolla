@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Delete, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
 import { suggestCategory } from "@/lib/categorize";
 import { formatCents } from "@/lib/money";
 import { todayISO } from "@/lib/dates";
@@ -107,7 +108,15 @@ export function LogPurchaseDrawer() {
         <DrawerHeader className="text-left">
           <DrawerTitle className="text-xl">Log a purchase</DrawerTitle>
           <DrawerDescription>
-            Amount, who, done. Category fills itself from the merchant.
+            Amount, who, done. Category fills itself from the merchant. To import a statement,{" "}
+            <Link
+              href="/profile"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={() => setLogOpen(false)}
+            >
+              paste or upload a CSV on Profile
+            </Link>
+            .
           </DrawerDescription>
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-2">

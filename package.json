@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:store": "tsx scripts/verify-store.ts"
+    "test:store": "tsx scripts/verify-store.ts",
+    "test:csv": "tsx scripts/verify-csv-import.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
