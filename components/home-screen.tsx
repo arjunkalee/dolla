@@ -40,7 +40,7 @@ export function HomeScreen() {
       <LeftoverCard headlinesOnly />
 
       <article className="rounded-3xl bg-card px-5 py-5 ring-1 ring-foreground/10">
-        <p className="text-sm text-muted-foreground">What's next</p>
+        <p className="text-sm text-muted-foreground">What&apos;s next</p>
         {nextIsBill && nextBill ? (
           <>
             <p className="mt-1 text-xl font-semibold tracking-tight">{nextBill.name}</p>
