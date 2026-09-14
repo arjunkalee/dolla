@@ -10,11 +10,13 @@ export function FormulaBlock({
   defaultOpen = true,
   muted = false,
   inverted = false,
+  quiet = false,
 }: {
   formula?: Formula;
   defaultOpen?: boolean;
   muted?: boolean;
   inverted?: boolean;
+  quiet?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   if (!formula || formula.rows.length === 0) return null;
@@ -24,12 +26,15 @@ export function FormulaBlock({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+        className={cn(
+          "flex min-h-11 w-full items-center gap-3 text-left",
+          quiet ? "justify-start font-medium opacity-80" : "justify-between"
+        )}
       >
-        <span className="font-medium">{formula.title}</span>
-        <span className="font-mono">{formatCents(formula.resultCents)}</span>
+        <span className="font-medium">{quiet && !open ? "How this is counted" : formula.title}</span>
+        {quiet ? null : <span className="font-mono">{formatCents(formula.resultCents)}</span>}
       </button>
-      {open && (
+      {open ? (
         <ol className="space-y-1 border-t border-current/15 pb-2 pt-2 font-mono text-xs">
           {formula.rows.map((row, i) => {
             const op =
@@ -51,7 +56,7 @@ export function FormulaBlock({
             );
           })}
         </ol>
-      )}
+      ) : null}
     </div>
   );
 }
