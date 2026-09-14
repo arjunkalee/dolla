@@ -35,7 +35,7 @@ export function LeftoverCard({
           inside checking and is not added again.
         </p>
         <div className="mt-3">
-          <FormulaBlock formula={insights.formulas.paycheck} defaultOpen={formulasOpen} />
+          <FormulaBlock formula={insights.formulas.paycheck} defaultOpen={formulasOpen} quiet={headlinesOnly} />
         </div>
       </article>
 
@@ -49,7 +49,12 @@ export function LeftoverCard({
           Includes cash that was already there ({formatCents(insights.preDepositCheckingCents)}).
         </p>
         <div className="mt-3">
-          <FormulaBlock formula={insights.formulas.checking} defaultOpen={formulasOpen} inverted />
+          <FormulaBlock
+            formula={insights.formulas.checking}
+            defaultOpen={formulasOpen}
+            inverted
+            quiet={headlinesOnly}
+          />
           {!headlinesOnly && (
             <FormulaBlock formula={insights.formulas.prior} defaultOpen={false} muted inverted />
           )}

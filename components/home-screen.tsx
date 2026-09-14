@@ -56,6 +56,21 @@ export function HomeScreen() {
         )}
       </article>
 
+      <div className="space-y-3">
+        <Button size="lg" className="h-12 w-full text-base" onClick={() => setLogOpen(true)}>
+          Log a purchase
+        </Button>
+        <p className="text-center text-sm">
+          <Link href="/split" className="font-medium text-primary">
+            Split
+          </Link>
+          <span className="text-muted-foreground"> / </span>
+          <Link href="/plan" className="font-medium text-primary">
+            Plan
+          </Link>
+        </p>
+      </div>
+
       {recent.length > 0 ? (
         <section>
           <div className="mb-2 flex items-center justify-between">
@@ -79,21 +94,6 @@ export function HomeScreen() {
           </div>
         </section>
       ) : null}
-
-      <div className="space-y-3">
-        <Button size="lg" className="h-12 w-full text-base" onClick={() => setLogOpen(true)}>
-          Log a purchase
-        </Button>
-        <p className="text-center text-sm">
-          <Link href="/split" className="font-medium text-primary">
-            Split
-          </Link>
-          <span className="text-muted-foreground"> / </span>
-          <Link href="/plan" className="font-medium text-primary">
-            Plan
-          </Link>
-        </p>
-      </div>
     </div>
   );
 }
