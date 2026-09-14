@@ -6,23 +6,20 @@ import { cn } from "@/lib/utils";
 import { useDolla } from "./dolla-provider";
 import { FormulaBlock } from "./formula-block";
 
-export function LeftoverCard({ compact = false }: { compact?: boolean }) {
+export function LeftoverCard({
+  compact = false,
+  headlinesOnly = false,
+}: {
+  compact?: boolean;
+  headlinesOnly?: boolean;
+}) {
   const { insights, setBillFromThisCheck } = useDolla();
   if (!insights) return null;
 
-  async function toggleAmex(reserve: boolean) {
-    try {
-      await setBillFromThisCheck("amex", reserve);
-      toast.success(
-        reserve ? "Amex reserved from this paycheck." : "Amex waits for the next paycheck."
-      );
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update Amex.");
-    }
-  }
+  const formulasOpen = !compact && !headlinesOnly;
 
-  return (
-    <div className="space-y-3">
+  const headlines = (
+    <>
       <article className="rounded-3xl bg-card px-5 py-5 ring-1 ring-foreground/10">
         <p className="text-sm text-muted-foreground">Left from this paycheck</p>
         <p
@@ -38,7 +35,7 @@ export function LeftoverCard({ compact = false }: { compact?: boolean }) {
           inside checking and is not added again.
         </p>
         <div className="mt-3">
-          <FormulaBlock formula={insights.formulas.paycheck} defaultOpen={!compact} />
+          <FormulaBlock formula={insights.formulas.paycheck} defaultOpen={formulasOpen} />
         </div>
       </article>
 
@@ -52,10 +49,33 @@ export function LeftoverCard({ compact = false }: { compact?: boolean }) {
           Includes cash that was already there ({formatCents(insights.preDepositCheckingCents)}).
         </p>
         <div className="mt-3">
-          <FormulaBlock formula={insights.formulas.checking} defaultOpen={!compact} inverted />
-          <FormulaBlock formula={insights.formulas.prior} defaultOpen={false} muted inverted />
+          <FormulaBlock formula={insights.formulas.checking} defaultOpen={formulasOpen} inverted />
+          {!headlinesOnly && (
+            <FormulaBlock formula={insights.formulas.prior} defaultOpen={false} muted inverted />
+          )}
         </div>
       </article>
+    </>
+  );
+
+  async function toggleAmex(reserve: boolean) {
+    try {
+      await setBillFromThisCheck("amex", reserve);
+      toast.success(
+        reserve ? "Amex reserved from this paycheck." : "Amex waits for the next paycheck."
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update Amex.");
+    }
+  }
+
+  if (headlinesOnly) {
+    return <div className="space-y-4">{headlines}</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {headlines}
 
       <article className="rounded-3xl bg-card px-5 py-4 ring-1 ring-foreground/10">
         <FormulaBlock formula={insights.formulas.cards} defaultOpen />
