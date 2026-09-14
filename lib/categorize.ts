@@ -1,5 +1,8 @@
 import type { CategoryId } from "./types";
 
+/** Catch-all envelope when a CSV row or merchant has no match. Same id as Misc — no new budget. */
+export const UNCATEGORIZED_CATEGORY_ID: CategoryId = "misc";
+
 const HEURISTICS: { pattern: RegExp; categoryId: CategoryId }[] = [
   { pattern: /UBER\s*EATS|DOORDASH|GRUBHUB|POSTMATES|TOAST\s*TAB|CAVIAR/, categoryId: "dining" },
   { pattern: /WHOLE\s*FOODS|WHOLEFDS|TRADER\s*JOE|JEWEL|KROGER|ALDI|H\s*E\s*B|HEB|COSTCO|SAMS\s*CLUB|SPROUTS|MARIANO|GROCERY|SUPERMARKET|FOOD\s*4\s*LESS|TONYS\s*FRESH|FRESH\s*MARKET|MEIJER|PUBLIX|SAFEWAY|WEGMANS/, categoryId: "groceries" },
@@ -39,7 +42,7 @@ export function suggestCategory(
       return { categoryId, source: "heuristic" };
     }
   }
-  return { categoryId: "misc", source: "fallback" };
+  return { categoryId: UNCATEGORIZED_CATEGORY_ID, source: "fallback" };
 }
 
 export function rememberMerchant(
@@ -52,6 +55,16 @@ export function rememberMerchant(
   return { ...rules, [key]: categoryId };
 }
 
+export function expenseEnvelopeLabel(
+  categories: { id: CategoryId; name: string }[],
+  expense: { categoryId: CategoryId; autoCategorized: boolean }
+): string {
+  if (expense.autoCategorized && expense.categoryId === UNCATEGORIZED_CATEGORY_ID) {
+    return "Uncategorized";
+  }
+  return categories.find((c) => c.id === expense.categoryId)?.name ?? "Uncategorized";
+}
+
 export function mapImportedCategory(label: string): CategoryId | null {
   const n = label.toLowerCase();
   if (/rent|housing/.test(n)) return "rent";
@@ -61,6 +74,6 @@ export function mapImportedCategory(label: string): CategoryId | null {
   if (/utilit|internet|electric/.test(n)) return "utilities";
   if (/travel|airline|hotel|lodging/.test(n)) return "travel";
   if (/weekend/.test(n)) return "weekends";
-  if (/other|misc/.test(n)) return "misc";
+  if (/other|misc|uncategor/.test(n)) return UNCATEGORIZED_CATEGORY_ID;
   return null;
 }

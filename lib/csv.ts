@@ -1,4 +1,9 @@
-import { mapImportedCategory, suggestCategory } from "./categorize";
+import {
+  mapImportedCategory,
+  normalizeMerchant,
+  suggestCategory,
+  UNCATEGORIZED_CATEGORY_ID,
+} from "./categorize";
 import { dollarsToCents } from "./money";
 import { nanoid } from "nanoid";
 import type { AppState, CategoryId, Expense } from "./types";
@@ -81,8 +86,11 @@ function parseDateCell(raw: string): string | null {
   return null;
 }
 
-function fingerprint(date: string, amountCents: number, merchant: string): string {
-  return `${date}|${amountCents}|${merchant.toUpperCase().replace(/\s+/g, " ").trim()}`;
+/** Duplicate key: `date|amountCents|normalizedMerchant` (see `normalizeMerchant`). */
+export function importFingerprint(date: string, amountCents: number, merchant: string): string {
+  const normalized =
+    normalizeMerchant(merchant) || merchant.toUpperCase().replace(/\s+/g, " ").trim();
+  return `${date}|${amountCents}|${normalized}`;
 }
 
 export function importCsv(state: AppState, csvText: string, nowISO: string, createdAt: string): CsvImportResult {
@@ -117,7 +125,7 @@ export function importCsv(state: AppState, csvText: string, nowISO: string, crea
   }
 
   const existing = new Set(
-    state.expenses.map((e) => fingerprint(e.date, e.amountCents, e.merchant))
+    state.expenses.map((e) => importFingerprint(e.date, e.amountCents, e.merchant))
   );
   const added: Expense[] = [];
   let skipped = 0;
@@ -138,8 +146,8 @@ export function importCsv(state: AppState, csvText: string, nowISO: string, crea
       continue;
     }
 
-    const date = parseDateCell(row[dateIdx] ?? "");
-    if (!date) {
+    const parsedDate = parseDateCell(row[dateIdx] ?? "");
+    if (!parsedDate) {
       skipped += 1;
       continue;
     }
@@ -149,7 +157,8 @@ export function importCsv(state: AppState, csvText: string, nowISO: string, crea
       continue;
     }
 
-    const fp = fingerprint(date, amountCents, merchant);
+    const date = parsedDate > nowISO ? nowISO : parsedDate;
+    const fp = importFingerprint(date, amountCents, merchant);
     if (existing.has(fp)) {
       duplicates += 1;
       continue;
@@ -157,7 +166,8 @@ export function importCsv(state: AppState, csvText: string, nowISO: string, crea
 
     const importedCat = categoryIdx >= 0 ? mapImportedCategory(row[categoryIdx] ?? "") : null;
     const suggested = suggestCategory(merchant, state.merchantRules);
-    const categoryId: CategoryId = importedCat ?? suggested.categoryId;
+    const categoryId: CategoryId =
+      importedCat ?? (suggested.source === "fallback" ? UNCATEGORIZED_CATEGORY_ID : suggested.categoryId);
 
     const expense: Expense = {
       id: nanoid(),
@@ -165,7 +175,7 @@ export function importCsv(state: AppState, csvText: string, nowISO: string, crea
       merchant,
       note: desc && desc !== merchant ? desc : "",
       categoryId,
-      date: date > nowISO ? nowISO : date,
+      date,
       source: "csv",
       createdAt,
       autoCategorized: !importedCat && suggested.source !== "rule",

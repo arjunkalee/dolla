@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { formatCents } from "@/lib/money";
 import { formatLongDate } from "@/lib/dates";
 import { useDolla } from "./dolla-provider";
@@ -31,6 +32,7 @@ export function ProfileScreen() {
   const { state, insights, importCsv, resetData } = useDolla();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [paste, setPaste] = useState("");
   const router = useRouter();
 
   if (!state || !insights) return null;
@@ -41,21 +43,36 @@ export function ProfileScreen() {
   const nextBill = upcoming[0];
   const billsTotalCents = upcoming.reduce((sum, b) => sum + b.amountCents, 0);
 
-  async function onFile(file: File | undefined) {
-    if (!file) return;
+  function importToast(meta: { added: number; skipped: number; duplicates: number; errors: string[] }) {
+    const parts = [`Imported ${meta.added} purchase${meta.added === 1 ? "" : "s"}`];
+    if (meta.duplicates) parts.push(`${meta.duplicates} duplicate${meta.duplicates === 1 ? "" : "s"} skipped`);
+    if (meta.skipped) parts.push(`${meta.skipped} payment${meta.skipped === 1 ? "" : "s"} skipped`);
+    toast.success(parts.join(", ") + ".");
+    if (meta.errors[0]) toast.error(meta.errors[0]);
+  }
+
+  async function runImport(csvText: string) {
+    const trimmed = csvText.trim();
+    if (!trimmed) {
+      toast.error("Choose a CSV file or paste CSV text.");
+      return;
+    }
     setBusy(true);
     try {
-      const meta = await importCsv(file);
-      toast.success(
-        `Imported ${meta.added} purchase${meta.added === 1 ? "" : "s"}${meta.duplicates ? `, ${meta.duplicates} duplicates skipped` : ""}.`
-      );
-      if (meta.errors[0]) toast.error(meta.errors[0]);
+      const meta = await importCsv(trimmed);
+      importToast(meta);
+      setPaste("");
       router.push("/activity");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Import failed.");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onFile(file: File | undefined) {
+    if (!file) return;
+    await runImport(await file.text());
   }
 
   async function logout() {
@@ -147,15 +164,19 @@ export function ProfileScreen() {
       <section className="rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
         <h2 className="font-medium">Import a statement</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Apple Card and most banks can export a CSV from Wallet or online banking. Dolla auto-sorts
-          merchants, then you can recategorize. This is not an Apple Pay feed.
+          Apple Card and most banks can export a CSV from Wallet or online banking. Upload a file or
+          paste the CSV. Dolla maps date, amount, merchant/memo, and an envelope — unmatched rows
+          land in Uncategorized (Misc). This is not an Apple Pay feed.
         </p>
         <input
           ref={inputRef}
           type="file"
           accept=".csv,text/csv"
           className="hidden"
-          onChange={(e) => onFile(e.target.files?.[0])}
+          onChange={(e) => {
+            void onFile(e.target.files?.[0]);
+            e.target.value = "";
+          }}
         />
         <Button
           className="mt-3 h-12 w-full text-base"
@@ -164,6 +185,40 @@ export function ProfileScreen() {
           onClick={() => inputRef.current?.click()}
         >
           Choose CSV
+        </Button>
+        <label htmlFor="csv-paste" className="mt-4 block text-sm font-medium">
+          Or paste CSV
+        </label>
+        <Textarea
+          id="csv-paste"
+          value={paste}
+          onChange={(e) => setPaste(e.target.value)}
+          placeholder="Transaction Date,Description,Merchant,Category,Type,Amount (USD)…"
+          className="mt-1 min-h-28 text-sm"
+          disabled={busy}
+        />
+        <Button
+          className="mt-3 h-12 w-full text-base"
+          variant="outline"
+          disabled={busy || !paste.trim()}
+          onClick={() => void runImport(paste)}
+        >
+          Import pasted CSV
+        </Button>
+        <Button
+          className="mt-2 h-12 w-full text-base"
+          variant="ghost"
+          disabled={busy}
+          onClick={async () => {
+            const res = await fetch("/sample-apple-card.csv");
+            if (!res.ok) {
+              toast.error("Could not load the sample CSV.");
+              return;
+            }
+            await runImport(await res.text());
+          }}
+        >
+          Import sample Apple Card CSV
         </Button>
       </section>
 

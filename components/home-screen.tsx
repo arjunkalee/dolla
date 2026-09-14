@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { formatCents, dollarsToCents } from "@/lib/money";
 import { formatLongDate } from "@/lib/dates";
+import { expenseEnvelopeLabel } from "@/lib/categorize";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -202,7 +203,7 @@ export function HomeScreen() {
                 <div className="min-w-0">
                   <p className="truncate font-medium">{e.merchant}</p>
                   <p className="text-xs text-muted-foreground">
-                    {state.categories.find((c) => c.id === e.categoryId)?.name} · {formatLongDate(e.date)}
+                    {expenseEnvelopeLabel(state.categories, e)} · {formatLongDate(e.date)}
                   </p>
                 </div>
                 <p className="font-mono text-sm">{formatCents(e.amountCents)}</p>

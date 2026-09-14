@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { parseChat } from "./chat";
-import { rememberMerchant, suggestCategory } from "./categorize";
+import { rememberMerchant, suggestCategory, UNCATEGORIZED_CATEGORY_ID } from "./categorize";
 import { importCsv } from "./csv";
 import { todayISO } from "./dates";
 import { formatCents } from "./money";
@@ -290,7 +290,9 @@ export async function importStatement(csvText: string): Promise<BootstrapRespons
     let merchantRules = current.merchantRules;
     let checking = current.checkingCents;
     for (const expense of result.added) {
-      merchantRules = rememberMerchant(merchantRules, expense.merchant, expense.categoryId);
+      if (!(expense.autoCategorized && expense.categoryId === UNCATEGORIZED_CATEGORY_ID)) {
+        merchantRules = rememberMerchant(merchantRules, expense.merchant, expense.categoryId);
+      }
       checking -= expense.amountCents;
     }
     return {
