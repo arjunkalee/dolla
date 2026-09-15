@@ -64,7 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             const extraActive =
               (tab.href === "/split" && pathname === "/plan") ||
               (tab.href === "/profile" &&
-                ["/", "/plan", "/activity", "/savings", "/budget"].includes(pathname));
+                ["/", "/plan", "/activity", "/savings", "/budget", "/bills"].includes(pathname));
             return (
               <TabLink
                 key={tab.href}

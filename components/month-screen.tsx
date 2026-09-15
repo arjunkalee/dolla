@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { nanoid } from "nanoid";
-import { dollarsToCents, formatCents } from "@/lib/money";
+import { dollarsField, dollarsToCents, formatCents } from "@/lib/money";
 import { daysInMonth, formatLongDate, formatMonthLabel, startOfMonth } from "@/lib/dates";
 import type { BillKind, UpcomingBill } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,7 @@ import { cn } from "@/lib/utils";
 import { useDolla } from "./dolla-provider";
 import { LeftoverCard } from "./leftover-card";
 import { FormulaBlock } from "./formula-block";
-
-function dollarsField(cents: number): string {
-  return (cents / 100).toFixed(cents % 100 === 0 ? 0 : 2);
-}
+import { AsOfText } from "./as-of";
 
 export function MonthScreen() {
   const { state, insights, saveChecking, saveBills, setBillPaid, savePaycheck } = useDolla();
@@ -26,6 +23,7 @@ export function MonthScreen() {
   const [anchor, setAnchor] = useState("");
   const [payDirty, setPayDirty] = useState(false);
   const [bills, setBills] = useState<UpcomingBill[] | null>(null);
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
   const months = useMemo(() => {
@@ -78,6 +76,7 @@ export function MonthScreen() {
     try {
       await saveBills(draftBills);
       setBills(null);
+      setAmountDrafts({});
       toast.success("Bills saved.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save.");
@@ -106,6 +105,7 @@ export function MonthScreen() {
         <p className="text-xs text-muted-foreground">
           Already includes the {formatCents(state.paycheck.netCents)} paycheck just received.
         </p>
+        <AsOfText iso={state.checkingUpdatedAt} empty="Not updated yet" className="mt-1" />
         <Input
           id="checking"
           inputMode="decimal"
@@ -199,13 +199,16 @@ export function MonthScreen() {
               onChange={(e) => updateBill(bill.id, { name: e.target.value })}
               className="h-11 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:ring-0"
             />
+            <AsOfText iso={bill.updatedAt} empty="Not updated yet" />
             <div className="grid grid-cols-2 gap-2">
               <Input
                 inputMode="decimal"
-                value={dollarsField(bill.amountCents)}
-                onChange={(e) =>
-                  updateBill(bill.id, { amountCents: Math.max(0, dollarsToCents(e.target.value || "0")) })
-                }
+                value={amountDrafts[bill.id] ?? dollarsField(bill.amountCents)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setAmountDrafts((drafts) => ({ ...drafts, [bill.id]: next }));
+                  updateBill(bill.id, { amountCents: Math.max(0, dollarsToCents(next || "0")) });
+                }}
                 className="h-12 font-mono"
                 aria-label={`${bill.name} amount`}
               />

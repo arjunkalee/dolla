@@ -55,6 +55,8 @@ export type UpcomingBill = {
   kind: BillKind;
   fromThisCheck: boolean;
   paidExpenseId?: string;
+  /** ISO timestamp of the last amount/due/paid/from-this-check edit. */
+  updatedAt?: string;
 };
 
 export type SavingsBucket = {
@@ -87,6 +89,8 @@ export type AppState = {
     timezone: string;
   };
   checkingCents: number;
+  /** ISO timestamp of the last checking balance edit or CSV import that changed it. */
+  checkingUpdatedAt?: string;
   paycheck: PaycheckSettings;
   categories: Category[];
   bills: UpcomingBill[];

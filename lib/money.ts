@@ -44,3 +44,7 @@ export function centsFromKeypad(rawDigits: string): number {
 export function keypadDisplay(cents: number): string {
   return formatCents(cents);
 }
+
+export function dollarsField(cents: number): string {
+  return (cents / 100).toFixed(cents % 100 === 0 ? 0 : 2);
+}

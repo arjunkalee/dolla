@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatCents } from "@/lib/money";
 import { formatLongDate } from "@/lib/dates";
 import { useDolla } from "./dolla-provider";
+import { AsOfText } from "./as-of";
 
 function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -19,6 +20,7 @@ function initialsFromName(name: string): string {
 }
 
 const TOOL_LINKS = [
+  { href: "/bills", label: "Balances & bills" },
   { href: "/", label: "Leftover math" },
   { href: "/budget", label: "Envelopes" },
   { href: "/activity", label: "All activity" },
@@ -110,12 +112,13 @@ export function ProfileScreen() {
       </header>
 
       <section className="grid grid-cols-2 gap-3">
-        <article className="rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
+        <Link href="/bills" className="rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
           <p className="text-sm text-muted-foreground">Checking</p>
           <p className="mt-1 font-mono text-xl font-semibold tracking-tight">
             {formatCents(state.checkingCents)}
           </p>
-        </article>
+          <AsOfText iso={state.checkingUpdatedAt} className="mt-1" />
+        </Link>
         <article className="rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
           <p className="text-sm text-muted-foreground">Biweekly paycheck</p>
           <p className="mt-1 font-mono text-xl font-semibold tracking-tight">
@@ -125,7 +128,7 @@ export function ProfileScreen() {
             Next payday {formatLongDate(insights.nextPayday)}
           </p>
         </article>
-        <article className="col-span-2 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
+        <Link href="/bills" className="col-span-2 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
           <p className="text-sm text-muted-foreground">Upcoming bills</p>
           {upcoming.length === 0 ? (
             <p className="mt-1 text-sm text-muted-foreground">No unpaid bills.</p>
@@ -140,9 +143,10 @@ export function ProfileScreen() {
                   ? ` · next ${nextBill.name} ${formatLongDate(nextBill.dueDate)}`
                   : ""}
               </p>
+              <AsOfText iso={nextBill?.updatedAt} className="mt-1" />
             </>
           )}
-        </article>
+        </Link>
       </section>
 
       <section>

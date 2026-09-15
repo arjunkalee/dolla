@@ -3,6 +3,7 @@ import { parseChat } from "./chat";
 import { rememberMerchant, suggestCategory, UNCATEGORIZED_CATEGORY_ID } from "./categorize";
 import { importCsv } from "./csv";
 import { todayISO } from "./dates";
+import { nowISO, stampBill, stampChangedBills } from "./freshness";
 import { formatCents } from "./money";
 import { computeInsights, leftoverSummary } from "./plan";
 import { emptyState, realState } from "./seed";
@@ -39,6 +40,7 @@ export async function logPurchase(input: {
   if (!merchant) throw new Error("Merchant is required.");
   const today = todayISO();
   const date = input.date && input.date <= today ? input.date : today;
+  const stamp = nowISO();
 
   const state = await updateState((current) => {
     const suggested = suggestCategory(merchant, current.merchantRules);
@@ -52,7 +54,7 @@ export async function logPurchase(input: {
       categoryId,
       date,
       source: "manual",
-      createdAt: new Date().toISOString(),
+      createdAt: stamp,
       autoCategorized,
     };
     let merchantRules = current.merchantRules;
@@ -64,6 +66,7 @@ export async function logPurchase(input: {
     return {
       ...current,
       checkingCents: current.checkingCents - input.amountCents,
+      checkingUpdatedAt: stamp,
       expenses: [expense, ...current.expenses],
       merchantRules,
     };
@@ -90,15 +93,19 @@ export async function recategorizeExpense(
 }
 
 export async function deleteExpense(id: string): Promise<BootstrapResponse> {
+  const stamp = nowISO();
   const state = await updateState((current) => {
     const expense = current.expenses.find((e) => e.id === id);
     if (!expense) return current;
     return {
       ...current,
       checkingCents: current.checkingCents + expense.amountCents,
+      checkingUpdatedAt: stamp,
       expenses: current.expenses.filter((e) => e.id !== id),
       bills: current.bills.map((b) =>
-        b.paidExpenseId === id ? { ...b, paid: false, paidExpenseId: undefined } : b
+        b.paidExpenseId === id
+          ? { ...b, paid: false, paidExpenseId: undefined, updatedAt: stamp }
+          : b
       ),
     };
   });
@@ -136,9 +143,11 @@ export async function savePaycheck(paycheck: PaycheckSettings): Promise<Bootstra
 }
 
 export async function saveChecking(checkingCents: number): Promise<BootstrapResponse> {
+  const stamp = nowISO();
   const state = await updateState((current) => ({
     ...current,
     checkingCents: Math.round(checkingCents),
+    checkingUpdatedAt: stamp,
   }));
   return pack(state);
 }
@@ -158,13 +167,18 @@ export async function saveSplitAllocations(
 }
 
 export async function saveBills(bills: UpcomingBill[]): Promise<BootstrapResponse> {
+  const stamp = nowISO();
   const state = await updateState((current) => ({
     ...current,
-    bills: bills.map((b) => ({
-      ...b,
-      name: b.name.trim() || "Bill",
-      amountCents: Math.max(0, b.amountCents),
-    })),
+    bills: stampChangedBills(
+      current.bills,
+      bills.map((b) => ({
+        ...b,
+        name: b.name.trim() || "Bill",
+        amountCents: Math.max(0, b.amountCents),
+      })),
+      stamp
+    ),
   }));
   return pack(state);
 }
@@ -173,15 +187,21 @@ export async function setBillFromThisCheck(
   id: string,
   fromThisCheck: boolean
 ): Promise<BootstrapResponse> {
-  const state = await updateState((current) => ({
-    ...current,
-    bills: current.bills.map((b) => (b.id === id ? { ...b, fromThisCheck } : b)),
-  }));
+  const stamp = nowISO();
+  const state = await updateState((current) => {
+    const bill = current.bills.find((b) => b.id === id);
+    if (!bill || bill.fromThisCheck === fromThisCheck) return current;
+    return {
+      ...current,
+      bills: stampBill(current.bills, id, stamp, { fromThisCheck }),
+    };
+  });
   return pack(state);
 }
 
 export async function setBillPaid(id: string, paid: boolean): Promise<BootstrapResponse> {
   const today = todayISO();
+  const stamp = nowISO();
   const state = await updateState((current) => {
     const bill = current.bills.find((b) => b.id === id);
     if (!bill || bill.paid === paid) return current;
@@ -196,16 +216,15 @@ export async function setBillPaid(id: string, paid: boolean): Promise<BootstrapR
         categoryId,
         date: today,
         source: "bill",
-        createdAt: new Date().toISOString(),
+        createdAt: stamp,
         autoCategorized: false,
       };
       return {
         ...current,
         checkingCents: current.checkingCents - bill.amountCents,
+        checkingUpdatedAt: stamp,
         expenses: [expense, ...current.expenses],
-        bills: current.bills.map((b) =>
-          b.id === id ? { ...b, paid: true, paidExpenseId: expense.id } : b
-        ),
+        bills: stampBill(current.bills, id, stamp, { paid: true, paidExpenseId: expense.id }),
       };
     }
 
@@ -215,12 +234,11 @@ export async function setBillPaid(id: string, paid: boolean): Promise<BootstrapR
     return {
       ...current,
       checkingCents: current.checkingCents + (refund?.amountCents ?? bill.amountCents),
+      checkingUpdatedAt: stamp,
       expenses: bill.paidExpenseId
         ? current.expenses.filter((e) => e.id !== bill.paidExpenseId)
         : current.expenses,
-      bills: current.bills.map((b) =>
-        b.id === id ? { ...b, paid: false, paidExpenseId: undefined } : b
-      ),
+      bills: stampBill(current.bills, id, stamp, { paid: false, paidExpenseId: undefined }),
     };
   });
   return pack(state);
@@ -251,26 +269,35 @@ export async function confirmSetAsides(input: {
 }): Promise<BootstrapResponse> {
   const today = todayISO();
   const date = input.date && input.date <= today ? input.date : today;
+  const stamp = nowISO();
   const state = await updateState((current) => {
     const events = [...current.savingsEvents];
     const savings = current.savings.map((bucket) => ({ ...bucket }));
     let checking = current.checkingCents;
+    let moved = false;
     for (const id of ["etrade", "roth", "hysa"] as SavingsId[]) {
       const amount = input.amounts[id] ?? 0;
       if (amount <= 0) continue;
+      moved = true;
       events.unshift({
         id: nanoid(),
         bucketId: id,
         amountCents: amount,
         date,
         note: "Paycheck set-aside",
-        createdAt: new Date().toISOString(),
+        createdAt: stamp,
       });
       const bucket = savings.find((b) => b.id === id);
       if (bucket) bucket.balanceCents += amount;
       checking -= amount;
     }
-    return { ...current, savings, savingsEvents: events, checkingCents: checking };
+    return {
+      ...current,
+      savings,
+      savingsEvents: events,
+      checkingCents: checking,
+      checkingUpdatedAt: moved ? stamp : current.checkingUpdatedAt,
+    };
   });
   return pack(state);
 }
@@ -298,6 +325,7 @@ export async function importStatement(csvText: string): Promise<BootstrapRespons
     return {
       ...current,
       checkingCents: checking,
+      checkingUpdatedAt: result.added.length > 0 ? createdAt : current.checkingUpdatedAt,
       expenses: [...result.added, ...current.expenses],
       merchantRules,
     };
@@ -411,10 +439,12 @@ export async function applyChatMessage(text: string): Promise<BootstrapResponse>
 
   const state = await updateState((s) => {
     const next = { ...s };
+    const stamp = nowISO();
     let note = "";
 
     if (intent.type === "set-checking") {
       next.checkingCents = intent.cents;
+      next.checkingUpdatedAt = stamp;
       note = `Checking is now ${formatCents(intent.cents)}.`;
     } else if (intent.type === "set-paycheck") {
       next.paycheck = { ...next.paycheck, netCents: intent.cents };
@@ -430,19 +460,17 @@ export async function applyChatMessage(text: string): Promise<BootstrapResponse>
         c.id === "rent" ? { ...c, monthlyBudgetCents: intent.cents } : c
       );
       next.bills = next.bills.map((b) =>
-        b.id === "rent" || b.kind === "rent" ? { ...b, amountCents: intent.cents } : b
+        b.id === "rent" || b.kind === "rent"
+          ? { ...b, amountCents: intent.cents, updatedAt: stamp }
+          : b
       );
       note = `Rent bill and rent envelope are both ${formatCents(intent.cents)}.`;
     } else if (intent.type === "set-bill-amount") {
-      next.bills = next.bills.map((b) =>
-        b.id === intent.billId ? { ...b, amountCents: intent.cents } : b
-      );
+      next.bills = stampBill(next.bills, intent.billId, stamp, { amountCents: intent.cents });
       const name = next.bills.find((b) => b.id === intent.billId)?.name ?? "Bill";
       note = `${name} is now ${formatCents(intent.cents)}.`;
     } else if (intent.type === "set-bill-due") {
-      next.bills = next.bills.map((b) =>
-        b.id === intent.billId ? { ...b, dueDate: intent.date } : b
-      );
+      next.bills = stampBill(next.bills, intent.billId, stamp, { dueDate: intent.date });
       const name = next.bills.find((b) => b.id === intent.billId)?.name ?? "Bill";
       note = `${name} due date is ${intent.date}.`;
     } else if (intent.type === "set-bill-paid") {
@@ -458,35 +486,39 @@ export async function applyChatMessage(text: string): Promise<BootstrapResponse>
             categoryId,
             date: todayISO(),
             source: "bill",
-            createdAt: new Date().toISOString(),
+            createdAt: stamp,
             autoCategorized: false,
           };
           next.checkingCents -= bill.amountCents;
+          next.checkingUpdatedAt = stamp;
           next.expenses = [expense, ...next.expenses];
-          next.bills = next.bills.map((b) =>
-            b.id === intent.billId ? { ...b, paid: true, paidExpenseId: expense.id } : b
-          );
+          next.bills = stampBill(next.bills, intent.billId, stamp, {
+            paid: true,
+            paidExpenseId: expense.id,
+          });
           note = `Marked ${bill.name} paid. Subtracted ${formatCents(bill.amountCents)} from checking.`;
         } else {
           const refund = bill.paidExpenseId
             ? next.expenses.find((e) => e.id === bill.paidExpenseId)
             : undefined;
           next.checkingCents += refund?.amountCents ?? bill.amountCents;
+          next.checkingUpdatedAt = stamp;
           next.expenses = bill.paidExpenseId
             ? next.expenses.filter((e) => e.id !== bill.paidExpenseId)
             : next.expenses;
-          next.bills = next.bills.map((b) =>
-            b.id === intent.billId ? { ...b, paid: false, paidExpenseId: undefined } : b
-          );
+          next.bills = stampBill(next.bills, intent.billId, stamp, {
+            paid: false,
+            paidExpenseId: undefined,
+          });
           note = `Marked ${bill.name} unpaid. Added the amount back to checking.`;
         }
       } else {
         note = bill ? `${bill.name} was already ${intent.paid ? "paid" : "unpaid"}.` : "No matching bill.";
       }
     } else if (intent.type === "set-from-check") {
-      next.bills = next.bills.map((b) =>
-        b.id === intent.billId ? { ...b, fromThisCheck: intent.fromThisCheck } : b
-      );
+      next.bills = stampBill(next.bills, intent.billId, stamp, {
+        fromThisCheck: intent.fromThisCheck,
+      });
       const name = next.bills.find((b) => b.id === intent.billId)?.name ?? "Bill";
       note = intent.fromThisCheck
         ? `${name} is reserved from this paycheck.`
@@ -502,10 +534,11 @@ export async function applyChatMessage(text: string): Promise<BootstrapResponse>
         categoryId,
         date: todayISO(),
         source: "manual",
-        createdAt: new Date().toISOString(),
+        createdAt: stamp,
         autoCategorized: !intent.categoryId,
       };
       next.checkingCents -= intent.cents;
+      next.checkingUpdatedAt = stamp;
       next.expenses = [expense, ...next.expenses];
       next.merchantRules = rememberMerchant(next.merchantRules, intent.merchant, categoryId);
       note = `Logged ${formatCents(intent.cents)} at ${intent.merchant} → ${next.categories.find((c) => c.id === categoryId)?.name ?? categoryId}. Checking ${formatCents(next.checkingCents)}.`;

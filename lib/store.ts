@@ -153,11 +153,20 @@ function looksLikeLedger(state: unknown): state is AppState {
   return Array.isArray(value.categories) && Array.isArray(value.bills) && typeof value.checkingCents === "number";
 }
 
+function optionalIso(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function normalize(state: AppState): AppState {
   return {
     ...state,
     version: STATE_VERSION,
+    checkingUpdatedAt: optionalIso(state.checkingUpdatedAt),
     expenses: state.expenses ?? [],
+    bills: (state.bills ?? []).map((bill) => ({
+      ...bill,
+      updatedAt: optionalIso(bill.updatedAt),
+    })),
     chatMessages: state.chatMessages ?? [],
     chatPending: state.chatPending ?? null,
     splitAllocations: state.splitAllocations?.length
