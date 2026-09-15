@@ -21,7 +21,7 @@ function initialsFromName(name: string): string {
 
 const TOOL_LINKS = [
   { href: "/bills", label: "Balances & bills" },
-  { href: "/", label: "Leftover math" },
+  { href: "/savings", label: "Leftover math" },
   { href: "/budget", label: "Envelopes" },
   { href: "/activity", label: "All activity" },
   { href: "/savings", label: "eTrade / Roth / HYSA" },
