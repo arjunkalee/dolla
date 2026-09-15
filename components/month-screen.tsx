@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { useDolla } from "./dolla-provider";
 import { LeftoverCard } from "./leftover-card";
 import { FormulaBlock } from "./formula-block";
-import { AsOfText } from "./as-of";
+import { AsOfText, BillPaidBadge } from "./as-of";
 
 export function MonthScreen() {
   const { state, insights, saveChecking, saveBills, setBillPaid, savePaycheck } = useDolla();
@@ -193,12 +193,21 @@ export function MonthScreen() {
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Dated bills</h2>
         {draftBills.map((bill) => (
-          <article key={bill.id} className="space-y-2 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
-            <Input
-              value={bill.name}
-              onChange={(e) => updateBill(bill.id, { name: e.target.value })}
-              className="h-11 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:ring-0"
-            />
+          <article
+            key={bill.id}
+            className={cn(
+              "space-y-2 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10",
+              bill.paid && "ring-primary/25"
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <Input
+                value={bill.name}
+                onChange={(e) => updateBill(bill.id, { name: e.target.value })}
+                className="h-11 flex-1 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:ring-0"
+              />
+              <BillPaidBadge paid={bill.paid} />
+            </div>
             <AsOfText iso={bill.updatedAt} empty="Not updated yet" />
             <div className="grid grid-cols-2 gap-2">
               <Input

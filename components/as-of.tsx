@@ -2,6 +2,7 @@
 
 import { formatAsOf } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 export function AsOfText({
   iso,
@@ -26,5 +27,14 @@ export function AsOfText({
     >
       {label}
     </p>
+  );
+}
+
+export function BillPaidBadge({ paid }: { paid: boolean }) {
+  if (!paid) return null;
+  return (
+    <Badge variant="secondary" className="shrink-0">
+      Paid
+    </Badge>
   );
 }
