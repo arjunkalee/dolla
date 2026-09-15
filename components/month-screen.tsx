@@ -23,6 +23,7 @@ export function MonthScreen() {
   const [anchor, setAnchor] = useState("");
   const [payDirty, setPayDirty] = useState(false);
   const [bills, setBills] = useState<UpcomingBill[] | null>(null);
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
   const months = useMemo(() => {
@@ -75,6 +76,7 @@ export function MonthScreen() {
     try {
       await saveBills(draftBills);
       setBills(null);
+      setAmountDrafts({});
       toast.success("Bills saved.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save.");
@@ -201,10 +203,12 @@ export function MonthScreen() {
             <div className="grid grid-cols-2 gap-2">
               <Input
                 inputMode="decimal"
-                value={dollarsField(bill.amountCents)}
-                onChange={(e) =>
-                  updateBill(bill.id, { amountCents: Math.max(0, dollarsToCents(e.target.value || "0")) })
-                }
+                value={amountDrafts[bill.id] ?? dollarsField(bill.amountCents)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setAmountDrafts((drafts) => ({ ...drafts, [bill.id]: next }));
+                  updateBill(bill.id, { amountCents: Math.max(0, dollarsToCents(next || "0")) });
+                }}
                 className="h-12 font-mono"
                 aria-label={`${bill.name} amount`}
               />

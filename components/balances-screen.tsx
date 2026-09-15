@@ -28,6 +28,7 @@ export function BalancesScreen() {
   const [checking, setChecking] = useState("");
   const [checkingDirty, setCheckingDirty] = useState(false);
   const [bills, setBills] = useState<UpcomingBill[] | null>(null);
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
   const liveBills = state?.bills ?? [];
@@ -57,6 +58,7 @@ export function BalancesScreen() {
     try {
       await saveBills(draftBills);
       setBills(null);
+      setAmountDrafts({});
       toast.success("Bills saved.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save bills.");
@@ -73,6 +75,7 @@ export function BalancesScreen() {
     if (bills) {
       await saveBills(draftBills);
       setBills(null);
+      setAmountDrafts({});
     }
     await run();
   }
@@ -154,12 +157,14 @@ export function BalancesScreen() {
                   <Input
                     id={`${bill.id}-amount`}
                     inputMode="decimal"
-                    value={dollarsField(bill.amountCents)}
-                    onChange={(e) =>
+                    value={amountDrafts[bill.id] ?? dollarsField(bill.amountCents)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setAmountDrafts((drafts) => ({ ...drafts, [bill.id]: next }));
                       updateBill(bill.id, {
-                        amountCents: Math.max(0, dollarsToCents(e.target.value || "0")),
-                      })
-                    }
+                        amountCents: Math.max(0, dollarsToCents(next || "0")),
+                      });
+                    }}
                     className="mt-1 h-12 font-mono"
                     aria-label={`${bill.name} amount`}
                   />
