@@ -31,7 +31,7 @@ export function CalendarScreen() {
       <header>
         <h1 className="text-[1.75rem] font-semibold tracking-tight">Calendar</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Paydays, bills, and logged spend. Leftover math lives on Home and Split.
+          Paydays, bills, and logged spend. Leftover math lives on Split.
         </p>
       </header>
 
