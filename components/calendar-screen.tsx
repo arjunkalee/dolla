@@ -5,6 +5,7 @@ import { formatCents } from "@/lib/money";
 import { daysInMonth, formatLongDate, formatMonthLabel, startOfMonth } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { useDolla } from "./dolla-provider";
+import { BillPaidBadge } from "./as-of";
 
 export function CalendarScreen() {
   const { state, insights } = useDolla();
@@ -80,7 +81,10 @@ function EventRow({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0">
-        <p className="truncate font-medium">{ev.label}</p>
+        <div className="flex items-center gap-2">
+          <p className="min-w-0 truncate font-medium">{ev.label}</p>
+          {ev.kind === "bill" ? <BillPaidBadge paid={Boolean(ev.paid)} /> : null}
+        </div>
         <p className="text-xs text-muted-foreground">
           {formatLongDate(ev.date)}
           {ev.kind === "payday" ? " · payday" : ev.kind === "spend" ? " · spend" : ev.paid ? " · paid" : " · due"}
