@@ -15,6 +15,50 @@ const expectEq = (label: string, got: number, want: number) => {
 
 expectEq("paycheck leftover", insights.leftoverPaycheckCents, 19_054);
 expectEq("checking leftover", insights.leftoverCheckingCents, 237_100);
+expectEq("seed month spent (no purchases)", insights.monthSpentCents, 0);
+
+{
+  const spentState = realState(new Date("2026-09-15T12:00:00-05:00"));
+  spentState.expenses = [
+    {
+      id: "in-month-a",
+      amountCents: 1_250,
+      merchant: "grocer",
+      note: "",
+      categoryId: "groceries",
+      date: "2026-09-01",
+      source: "manual",
+      createdAt: "2026-09-01T17:00:00.000Z",
+      autoCategorized: false,
+    },
+    {
+      id: "in-month-b",
+      amountCents: 3_750,
+      merchant: "diner",
+      note: "",
+      categoryId: "dining",
+      date: "2026-09-14",
+      source: "csv",
+      createdAt: "2026-09-14T17:00:00.000Z",
+      autoCategorized: true,
+    },
+    {
+      id: "prior-month",
+      amountCents: 9_999,
+      merchant: "old",
+      note: "",
+      categoryId: "misc",
+      date: "2026-08-31",
+      source: "manual",
+      createdAt: "2026-08-31T17:00:00.000Z",
+      autoCategorized: false,
+    },
+  ];
+  const spentInsights = computeInsights(spentState, "2026-09-15", store);
+  expectEq("month spent so far", spentInsights.monthSpentCents, 5_000);
+  expectEq("checking leftover still computed", spentInsights.leftoverCheckingCents, 237_100);
+  expectEq("checking cents not reset", spentState.checkingCents, 495_201);
+}
 expectEq("checking if Amex reserved", insights.leftoverCheckingIfAmexReservedCents, 95_448);
 expectEq("paycheck if Amex reserved", insights.leftoverPaycheckIfAmexReservedCents, -122_598);
 expectEq("cards", insights.cardTotalCents, 114_901);
