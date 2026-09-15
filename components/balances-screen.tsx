@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { nanoid } from "nanoid";
@@ -86,6 +87,11 @@ export function BalancesScreen() {
         <h1 className="text-[1.75rem] font-semibold tracking-tight">Balances & bills</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Checking and dated bills. Leftover math updates when you save. Nothing is invented here.
+          Import Apple Card, BofA, or Amex Gold CSVs on{" "}
+          <Link href="/profile" className="underline underline-offset-4">
+            Profile
+          </Link>
+          — same upload/paste as always.
         </p>
       </header>
 

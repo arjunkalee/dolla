@@ -11,6 +11,7 @@ import type {
   SavingsId,
   UpcomingBill,
 } from "@/lib/types";
+import type { CsvImportMeta } from "@/lib/csv";
 
 type DollaContextValue = {
   loading: boolean;
@@ -38,7 +39,7 @@ type DollaContextValue = {
   setBillFromThisCheck: (id: string, fromThisCheck: boolean) => Promise<void>;
   saveSavingsTargets: (savings: AppState["savings"]) => Promise<void>;
   confirmSetAsides: (amounts: Partial<Record<SavingsId, number>>) => Promise<void>;
-  importCsv: (csvText: string) => Promise<{ added: number; skipped: number; duplicates: number; errors: string[] }>;
+  importCsv: (csvText: string) => Promise<CsvImportMeta>;
   resetData: (mode: "sample" | "empty" | "keep-settings" | "real") => Promise<void>;
   sendChat: (text: string) => Promise<void>;
 };
@@ -235,12 +236,7 @@ export function DollaProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Import failed");
       apply(data);
-      return data.importMeta as {
-        added: number;
-        skipped: number;
-        duplicates: number;
-        errors: string[];
-      };
+      return data.importMeta as CsvImportMeta;
     },
     [apply]
   );

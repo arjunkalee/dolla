@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCents } from "@/lib/money";
 import { formatLongDate } from "@/lib/dates";
+import type { CsvImportMeta } from "@/lib/csv";
 import { useDolla } from "./dolla-provider";
 import { AsOfText } from "./as-of";
 
@@ -31,10 +32,11 @@ const TOOL_LINKS = [
 ] as const;
 
 export function ProfileScreen() {
-  const { state, insights, importCsv, resetData } = useDolla();
+  const { state, insights, importCsv, resetData, saveChecking } = useDolla();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [paste, setPaste] = useState("");
+  const [pendingCheckingCents, setPendingCheckingCents] = useState<number | undefined>(undefined);
   const router = useRouter();
 
   if (!state || !insights) return null;
@@ -45,7 +47,7 @@ export function ProfileScreen() {
   const nextBill = upcoming[0];
   const billsTotalCents = upcoming.reduce((sum, b) => sum + b.amountCents, 0);
 
-  function importToast(meta: { added: number; skipped: number; duplicates: number; errors: string[] }) {
+  function importToast(meta: CsvImportMeta) {
     const parts = [`Imported ${meta.added} purchase${meta.added === 1 ? "" : "s"}`];
     if (meta.duplicates) parts.push(`${meta.duplicates} duplicate${meta.duplicates === 1 ? "" : "s"} skipped`);
     if (meta.skipped) parts.push(`${meta.skipped} payment${meta.skipped === 1 ? "" : "s"} skipped`);
@@ -64,9 +66,29 @@ export function ProfileScreen() {
       const meta = await importCsv(trimmed);
       importToast(meta);
       setPaste("");
-      router.push("/activity");
+      if (typeof meta.suggestedCheckingCents === "number") {
+        setPendingCheckingCents(meta.suggestedCheckingCents);
+      } else {
+        setPendingCheckingCents(undefined);
+        router.push("/activity");
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Import failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applySuggestedChecking() {
+    if (typeof pendingCheckingCents !== "number") return;
+    setBusy(true);
+    try {
+      await saveChecking(pendingCheckingCents);
+      toast.success(`Checking set to ${formatCents(pendingCheckingCents)}.`);
+      setPendingCheckingCents(undefined);
+      router.push("/bills");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save checking.");
     } finally {
       setBusy(false);
     }
@@ -75,6 +97,15 @@ export function ProfileScreen() {
   async function onFile(file: File | undefined) {
     if (!file) return;
     await runImport(await file.text());
+  }
+
+  async function importSample(href: string) {
+    const res = await fetch(href);
+    if (!res.ok) {
+      toast.error("Could not load the sample CSV.");
+      return;
+    }
+    await runImport(await res.text());
   }
 
   async function logout() {
@@ -165,12 +196,45 @@ export function ProfileScreen() {
         </div>
       </section>
 
+      {typeof pendingCheckingCents === "number" ? (
+        <section className="rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
+          <h2 className="font-medium">Set checking from this statement?</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            This checking export includes an ending balance of {formatCents(pendingCheckingCents)}.
+            Dolla will not invent a number — this came from the file. Saving stamps as-of in
+            America/Chicago.
+          </p>
+          <p className="mt-3 font-mono text-xl font-semibold tracking-tight">
+            {formatCents(pendingCheckingCents)}
+          </p>
+          <Button
+            className="mt-3 h-12 w-full text-base"
+            disabled={busy}
+            onClick={() => void applySuggestedChecking()}
+          >
+            Set checking to this
+          </Button>
+          <Button
+            className="mt-2 h-12 w-full text-base"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => {
+              setPendingCheckingCents(undefined);
+              router.push("/activity");
+            }}
+          >
+            Skip — view activity
+          </Button>
+        </section>
+      ) : null}
+
       <section className="rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
         <h2 className="font-medium">Import a statement</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Apple Card and most banks can export a CSV from Wallet or online banking. Upload a file or
-          paste the CSV. Dolla maps date, amount, merchant/memo, and an envelope — unmatched rows
-          land in Uncategorized (Misc). This is not an Apple Pay feed.
+          Apple Card, Bank of America (checking / Unlimited Cash Rewards), and Amex Gold can export a
+          CSV from Wallet or online banking. Upload a file or paste the CSV. Dolla maps date, amount,
+          merchant/memo, and an envelope — unmatched rows land in Uncategorized (Misc). Card payments
+          and credits are skipped. This is not an Apple Pay feed or a live bank sync.
         </p>
         <input
           ref={inputRef}
@@ -197,7 +261,7 @@ export function ProfileScreen() {
           id="csv-paste"
           value={paste}
           onChange={(e) => setPaste(e.target.value)}
-          placeholder="Transaction Date,Description,Merchant,Category,Type,Amount (USD)…"
+          placeholder="Date,Description,Amount…"
           className="mt-1 min-h-28 text-sm"
           disabled={busy}
         />
@@ -213,16 +277,25 @@ export function ProfileScreen() {
           className="mt-2 h-12 w-full text-base"
           variant="ghost"
           disabled={busy}
-          onClick={async () => {
-            const res = await fetch("/sample-apple-card.csv");
-            if (!res.ok) {
-              toast.error("Could not load the sample CSV.");
-              return;
-            }
-            await runImport(await res.text());
-          }}
+          onClick={() => void importSample("/sample-apple-card.csv")}
         >
           Import sample Apple Card CSV
+        </Button>
+        <Button
+          className="mt-2 h-12 w-full text-base"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => void importSample("/sample-bofa.csv")}
+        >
+          Import sample BofA checking CSV
+        </Button>
+        <Button
+          className="mt-2 h-12 w-full text-base"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => void importSample("/sample-amex-gold.csv")}
+        >
+          Import sample Amex Gold CSV
         </Button>
       </section>
 
