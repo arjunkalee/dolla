@@ -24,7 +24,7 @@ There is **no** consumer Apple Pay API for a website. Apple Pay does not expose 
 Instead:
 
 1. Log a purchase in the app (fast on iPhone).
-2. Import a CSV export from Wallet (Apple Card) or your bank — upload or paste on Profile. A sample file lives at `public/sample-apple-card.csv`. Re-import of the same rows is skipped (`date|amountCents|normalizedMerchant`).
+2. Import a CSV export from Wallet (Apple Card), Bank of America (checking / Unlimited Cash Rewards), or Amex Gold — upload or paste on Profile (`/bills` links there). Samples live at `public/sample-apple-card.csv`, `public/sample-bofa.csv`, and `public/sample-amex-gold.csv`. Payments and credits are skipped. Re-import of the same rows is skipped (`date|amountCents|normalizedMerchant`). A BofA checking file with a running/ending balance can offer **Set checking to this** (America/Chicago as-of); Dolla never invents a balance if that column is missing.
 3. Edit checking and dated bills on **Balances & bills** (`/bills`) so numbers show an America/Chicago **as of** without live bank sync.
 
 Decision memo (Plaid vs CSV/email vs native; **Apple Pay push: not possible on web**): [`docs/SCRUM-15-bank-sync-spike.md`](docs/SCRUM-15-bank-sync-spike.md).

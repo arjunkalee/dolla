@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { parseChat } from "./chat";
 import { rememberMerchant, suggestCategory, UNCATEGORIZED_CATEGORY_ID } from "./categorize";
-import { importCsv } from "./csv";
+import { importCsv, type CsvImportMeta } from "./csv";
 import { todayISO } from "./dates";
 import { markBillsPastDuePaid, nowISO, stampBill, stampChangedBills } from "./freshness";
 import { formatCents } from "./money";
@@ -311,10 +311,12 @@ export async function confirmSetAsides(input: {
   return pack(state);
 }
 
-export async function importStatement(csvText: string): Promise<BootstrapResponse & { importMeta: { added: number; skipped: number; duplicates: number; errors: string[] } }> {
+export async function importStatement(
+  csvText: string
+): Promise<BootstrapResponse & { importMeta: CsvImportMeta }> {
   const today = todayISO();
   const createdAt = new Date().toISOString();
-  let meta = { added: 0, skipped: 0, duplicates: 0, errors: [] as string[] };
+  let meta: CsvImportMeta = { added: 0, skipped: 0, duplicates: 0, errors: [] };
   const state = await updateState((current) => {
     const result = importCsv(current, csvText, today, createdAt);
     meta = {
@@ -322,6 +324,7 @@ export async function importStatement(csvText: string): Promise<BootstrapRespons
       skipped: result.skipped,
       duplicates: result.duplicates,
       errors: result.errors,
+      suggestedCheckingCents: result.suggestedCheckingCents,
     };
     let merchantRules = current.merchantRules;
     let checking = current.checkingCents;
