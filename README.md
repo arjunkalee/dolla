@@ -25,6 +25,9 @@ Instead:
 
 1. Log a purchase in the app (fast on iPhone).
 2. Import a CSV export from Wallet (Apple Card) or your bank — upload or paste on Profile. A sample file lives at `public/sample-apple-card.csv`. Re-import of the same rows is skipped (`date|amountCents|normalizedMerchant`).
+3. Edit checking and dated bills on **Balances & bills** (`/bills`) so numbers show an America/Chicago **as of** without live bank sync.
+
+Decision memo (Plaid vs CSV/email vs native; **Apple Pay push: not possible on web**): [`docs/SCRUM-15-bank-sync-spike.md`](docs/SCRUM-15-bank-sync-spike.md).
 
 ## Local development
 
