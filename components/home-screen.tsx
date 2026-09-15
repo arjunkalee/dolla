@@ -7,6 +7,7 @@ import { expenseEnvelopeLabel } from "@/lib/categorize";
 import { Button } from "@/components/ui/button";
 import { useDolla } from "./dolla-provider";
 import { LeftoverCard } from "./leftover-card";
+import { AsOfText } from "./as-of";
 
 export function HomeScreen() {
   const { state, insights, setLogOpen } = useDolla();
@@ -47,6 +48,7 @@ export function HomeScreen() {
             <p className="mt-1 text-sm text-muted-foreground">
               Due {formatLongDate(nextBill.dueDate)} · {formatCents(nextBill.amountCents)}
             </p>
+            <AsOfText iso={nextBill.updatedAt} className="mt-1" />
           </>
         ) : (
           <>
@@ -61,6 +63,10 @@ export function HomeScreen() {
           Log a purchase
         </Button>
         <p className="text-center text-sm">
+          <Link href="/bills" className="font-medium text-primary">
+            Balances & bills
+          </Link>
+          <span className="text-muted-foreground"> / </span>
           <Link href="/split" className="font-medium text-primary">
             Split
           </Link>

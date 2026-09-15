@@ -5,6 +5,7 @@ import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { useDolla } from "./dolla-provider";
 import { FormulaBlock } from "./formula-block";
+import { AsOfText } from "./as-of";
 
 export function LeftoverCard({
   compact = false,
@@ -13,8 +14,8 @@ export function LeftoverCard({
   compact?: boolean;
   headlinesOnly?: boolean;
 }) {
-  const { insights, setBillFromThisCheck } = useDolla();
-  if (!insights) return null;
+  const { insights, state, setBillFromThisCheck } = useDolla();
+  if (!insights || !state) return null;
 
   const formulasOpen = !compact && !headlinesOnly;
 
@@ -44,6 +45,7 @@ export function LeftoverCard({
         <p className="mt-1 font-mono text-4xl font-semibold tracking-tight">
           {formatCents(insights.leftoverCheckingCents)}
         </p>
+        <AsOfText iso={state.checkingUpdatedAt} inverted className="mt-1" />
         <p className="mt-2 text-sm opacity-80">
           After this-check bills only. Two-week envelopes are a plan on Split, not a deduction.
           Includes cash that was already there ({formatCents(insights.preDepositCheckingCents)}).

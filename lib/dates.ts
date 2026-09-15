@@ -97,6 +97,22 @@ export function formatMonthLabel(iso: string): string {
   }).format(parseISODate(startOfMonth(iso)));
 }
 
+/** Short America/Chicago stamp, e.g. "as of Sep 14, 7:14 PM CT". */
+export function formatAsOf(iso?: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: TIMEZONE,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+  return `as of ${formatted.replace(/\u202f/g, " ")} CT`;
+}
+
 export function daysBetween(fromISO: string, toISO: string): number {
   const from = parseISODate(fromISO).getTime();
   const to = parseISODate(toISO).getTime();

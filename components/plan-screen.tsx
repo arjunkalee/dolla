@@ -13,6 +13,9 @@ export function PlanScreen() {
         </p>
       </header>
       <LeftoverCard />
+      <Link href="/bills" className="inline-flex min-h-12 items-center text-base font-medium text-primary">
+        Edit balances & bills
+      </Link>
       <Link href="/month" className="inline-flex min-h-12 items-center text-base font-medium text-primary">
         Open the Month plan
       </Link>
