@@ -3,7 +3,7 @@ import { parseChat } from "./chat";
 import { rememberMerchant, suggestCategory, UNCATEGORIZED_CATEGORY_ID } from "./categorize";
 import { importCsv } from "./csv";
 import { todayISO } from "./dates";
-import { nowISO, stampBill, stampChangedBills } from "./freshness";
+import { markBillsPastDuePaid, nowISO, stampBill, stampChangedBills } from "./freshness";
 import { formatCents } from "./money";
 import { computeInsights, leftoverSummary } from "./plan";
 import { emptyState, realState } from "./seed";
@@ -21,8 +21,11 @@ import type {
   UpcomingBill,
 } from "./types";
 
+/** Load AppState, auto-mark past-due bills paid (no checking side effects), persist if anything flipped. */
 export async function bootstrap(): Promise<BootstrapResponse> {
-  const state = await loadState();
+  const loaded = await loadState();
+  const settled = markBillsPastDuePaid(loaded, todayISO(), nowISO());
+  const state = settled.changed ? await saveState(settled.state) : loaded;
   return pack(state);
 }
 
@@ -199,6 +202,23 @@ export async function setBillFromThisCheck(
   return pack(state);
 }
 
+/** Reverse a manual bill payment. Auto-marked past-due bills have no expense — do not invent checking cash. */
+function unpayBill(current: AppState, bill: UpcomingBill, stamp: string): AppState {
+  const linked = bill.paidExpenseId
+    ? current.expenses.find((e) => e.id === bill.paidExpenseId)
+    : undefined;
+  const refundCents = bill.paidExpenseId ? (linked?.amountCents ?? bill.amountCents) : 0;
+  return {
+    ...current,
+    checkingCents: current.checkingCents + refundCents,
+    checkingUpdatedAt: refundCents ? stamp : current.checkingUpdatedAt,
+    expenses: bill.paidExpenseId
+      ? current.expenses.filter((e) => e.id !== bill.paidExpenseId)
+      : current.expenses,
+    bills: stampBill(current.bills, bill.id, stamp, { paid: false, paidExpenseId: undefined }),
+  };
+}
+
 export async function setBillPaid(id: string, paid: boolean): Promise<BootstrapResponse> {
   const today = todayISO();
   const stamp = nowISO();
@@ -228,18 +248,7 @@ export async function setBillPaid(id: string, paid: boolean): Promise<BootstrapR
       };
     }
 
-    const refund = bill.paidExpenseId
-      ? current.expenses.find((e) => e.id === bill.paidExpenseId)
-      : undefined;
-    return {
-      ...current,
-      checkingCents: current.checkingCents + (refund?.amountCents ?? bill.amountCents),
-      checkingUpdatedAt: stamp,
-      expenses: bill.paidExpenseId
-        ? current.expenses.filter((e) => e.id !== bill.paidExpenseId)
-        : current.expenses,
-      bills: stampBill(current.bills, id, stamp, { paid: false, paidExpenseId: undefined }),
-    };
+    return unpayBill(current, bill, stamp);
   });
   return pack(state);
 }
@@ -498,19 +507,14 @@ export async function applyChatMessage(text: string): Promise<BootstrapResponse>
           });
           note = `Marked ${bill.name} paid. Subtracted ${formatCents(bill.amountCents)} from checking.`;
         } else {
-          const refund = bill.paidExpenseId
-            ? next.expenses.find((e) => e.id === bill.paidExpenseId)
-            : undefined;
-          next.checkingCents += refund?.amountCents ?? bill.amountCents;
-          next.checkingUpdatedAt = stamp;
-          next.expenses = bill.paidExpenseId
-            ? next.expenses.filter((e) => e.id !== bill.paidExpenseId)
-            : next.expenses;
-          next.bills = stampBill(next.bills, intent.billId, stamp, {
-            paid: false,
-            paidExpenseId: undefined,
-          });
-          note = `Marked ${bill.name} unpaid. Added the amount back to checking.`;
+          const unpaid = unpayBill(next, bill, stamp);
+          next.checkingCents = unpaid.checkingCents;
+          next.checkingUpdatedAt = unpaid.checkingUpdatedAt;
+          next.expenses = unpaid.expenses;
+          next.bills = unpaid.bills;
+          note = bill.paidExpenseId
+            ? `Marked ${bill.name} unpaid. Added the amount back to checking.`
+            : `Marked ${bill.name} unpaid.`;
         }
       } else {
         note = bill ? `${bill.name} was already ${intent.paid ? "paid" : "unpaid"}.` : "No matching bill.";

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useDolla } from "./dolla-provider";
-import { AsOfText } from "./as-of";
+import { AsOfText, BillPaidBadge } from "./as-of";
 
 function billDraftDirty(draft: UpcomingBill, live: UpcomingBill | undefined): boolean {
   if (!live) return true;
@@ -129,23 +129,34 @@ export function BalancesScreen() {
           <h2 className="text-sm font-medium">Dated bills</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Bank of America, Apple Card, Amex, and rent. Amount, due date, paid, and this-check.
+            Past-due dates (Chicago) are marked paid on load without touching checking.
           </p>
         </div>
         {ordered.map((bill) => {
           const live = liveBills.find((item) => item.id === bill.id);
           const dirty = billDraftDirty(bill, live);
           return (
-            <article key={bill.id} className="space-y-3 rounded-3xl bg-card px-5 py-5 ring-1 ring-foreground/10">
+            <article
+              key={bill.id}
+              className={cn(
+                "space-y-3 rounded-3xl bg-card px-5 py-5 ring-1 ring-foreground/10",
+                bill.paid && "ring-primary/25"
+              )}
+            >
               <div>
-                <Input
-                  value={bill.name}
-                  onChange={(e) => updateBill(bill.id, { name: e.target.value })}
-                  className="h-11 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:ring-0"
-                  aria-label={`${bill.name} name`}
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={bill.name}
+                    onChange={(e) => updateBill(bill.id, { name: e.target.value })}
+                    className="h-11 flex-1 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:ring-0"
+                    aria-label={`${bill.name} name`}
+                  />
+                  <BillPaidBadge paid={bill.paid} />
+                </div>
                 <AsOfText iso={live?.updatedAt} empty="Not updated yet" />
                 <p className="mt-1 text-xs text-muted-foreground">
                   Due {formatLongDate(bill.dueDate)}
+                  {bill.paid ? " · paid" : ""}
                   {bill.kind === "rent" ? " · rent" : bill.kind === "card" ? " · card" : ""}
                 </p>
               </div>

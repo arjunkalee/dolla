@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test:store": "tsx scripts/verify-store.ts",
     "test:csv": "tsx scripts/verify-csv-import.ts",
-    "test:freshness": "tsx scripts/verify-freshness.ts"
+    "test:freshness": "tsx scripts/verify-freshness.ts",
+    "test:past-due": "tsx scripts/verify-past-due.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

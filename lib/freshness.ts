@@ -1,4 +1,4 @@
-import type { UpcomingBill } from "./types";
+import type { AppState, UpcomingBill } from "./types";
 
 export const FEATURED_BILL_IDS = ["bofa", "apple-card", "amex", "rent"] as const;
 
@@ -41,6 +41,30 @@ export function stampBill(
   return bills.map((bill) =>
     bill.id === id ? { ...bill, ...patch, updatedAt: stamp } : bill
   );
+}
+
+/** Dated bill with dueDate strictly before Chicago `today` (YYYY-MM-DD). Due today stays unpaid. */
+export function isPastDueUnpaid(bill: UpcomingBill, today: string): boolean {
+  return Boolean(bill.dueDate) && !bill.paid && bill.dueDate < today;
+}
+
+/**
+ * Flip past-due unpaid bills to paid. Does not create a payment expense or touch checking —
+ * checking already reflects real-world payments. Past-due wins again on the next load.
+ */
+export function markBillsPastDuePaid(
+  state: AppState,
+  today: string,
+  stamp: string
+): { state: AppState; changed: boolean } {
+  let changed = false;
+  const bills = state.bills.map((bill) => {
+    if (!isPastDueUnpaid(bill, today)) return bill;
+    changed = true;
+    return { ...bill, paid: true, updatedAt: stamp };
+  });
+  if (!changed) return { state, changed: false };
+  return { state: { ...state, bills }, changed: true };
 }
 
 export function sortBillsForEdit(bills: UpcomingBill[]): UpcomingBill[] {
