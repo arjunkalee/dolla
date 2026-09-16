@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { toast } from "sonner";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -10,15 +9,13 @@ import { AsOfText } from "./as-of";
 
 export function LeftoverCard({
   compact = false,
-  headlinesOnly = false,
 }: {
   compact?: boolean;
-  headlinesOnly?: boolean;
 }) {
   const { insights, state, setBillFromThisCheck } = useDolla();
   if (!insights || !state) return null;
 
-  const formulasOpen = !compact && !headlinesOnly;
+  const formulasOpen = !compact;
 
   const headlines = (
     <>
@@ -37,50 +34,29 @@ export function LeftoverCard({
           inside checking and is not added again.
         </p>
         <div className="mt-3">
-          <FormulaBlock formula={insights.formulas.paycheck} defaultOpen={formulasOpen} quiet={headlinesOnly} />
+          <FormulaBlock formula={insights.formulas.paycheck} defaultOpen={formulasOpen} />
         </div>
       </article>
 
-      {headlinesOnly ? (
-        <article className="rounded-3xl bg-primary px-5 py-5 text-primary-foreground">
-          <p className="text-sm font-medium opacity-80">Spent this month</p>
-          <p className="mt-1 font-mono text-4xl font-semibold tracking-tight">
-            {formatCents(insights.monthSpentCents)}
-          </p>
-          <p className="mt-2 text-sm opacity-80">
-            Logged purchases in {insights.monthLabel}.
-          </p>
-          <p className="mt-3 text-sm">
-            <Link href="/activity" className="font-medium underline underline-offset-4">
-              Activity
-            </Link>
-            <span className="opacity-70"> · </span>
-            <Link href="/month" className="font-medium underline underline-offset-4">
-              Calendar
-            </Link>
-          </p>
-        </article>
-      ) : (
-        <article className="rounded-3xl bg-primary px-5 py-5 text-primary-foreground">
-          <p className="text-sm font-medium opacity-80">Left in checking</p>
-          <p className="mt-1 font-mono text-4xl font-semibold tracking-tight">
-            {formatCents(insights.leftoverCheckingCents)}
-          </p>
-          <AsOfText iso={state.checkingUpdatedAt} inverted className="mt-1" />
-          <p className="mt-2 text-sm opacity-80">
-            After this-check bills only. Two-week envelopes are a plan on Split, not a deduction.
-            Includes cash that was already there ({formatCents(insights.preDepositCheckingCents)}).
-          </p>
-          <div className="mt-3">
-            <FormulaBlock
-              formula={insights.formulas.checking}
-              defaultOpen={formulasOpen}
-              inverted
-            />
-            <FormulaBlock formula={insights.formulas.prior} defaultOpen={false} muted inverted />
-          </div>
-        </article>
-      )}
+      <article className="rounded-3xl bg-primary px-5 py-5 text-primary-foreground">
+        <p className="text-sm font-medium opacity-80">Left in checking</p>
+        <p className="mt-1 font-mono text-4xl font-semibold tracking-tight">
+          {formatCents(insights.leftoverCheckingCents)}
+        </p>
+        <AsOfText iso={state.checkingUpdatedAt} inverted className="mt-1" />
+        <p className="mt-2 text-sm opacity-80">
+          After this-check bills only. Two-week envelopes are a plan on Split, not a deduction.
+          Includes cash that was already there ({formatCents(insights.preDepositCheckingCents)}).
+        </p>
+        <div className="mt-3">
+          <FormulaBlock
+            formula={insights.formulas.checking}
+            defaultOpen={formulasOpen}
+            inverted
+          />
+          <FormulaBlock formula={insights.formulas.prior} defaultOpen={false} muted inverted />
+        </div>
+      </article>
     </>
   );
 
@@ -93,10 +69,6 @@ export function LeftoverCard({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update Amex.");
     }
-  }
-
-  if (headlinesOnly) {
-    return <div className="space-y-4">{headlines}</div>;
   }
 
   return (

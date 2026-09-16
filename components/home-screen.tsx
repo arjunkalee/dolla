@@ -6,7 +6,6 @@ import { formatLongDate } from "@/lib/dates";
 import { expenseEnvelopeLabel } from "@/lib/categorize";
 import { Button } from "@/components/ui/button";
 import { useDolla } from "./dolla-provider";
-import { LeftoverCard } from "./leftover-card";
 import { AsOfText } from "./as-of";
 
 export function HomeScreen() {
@@ -38,7 +37,24 @@ export function HomeScreen() {
         </h1>
       </header>
 
-      <LeftoverCard headlinesOnly />
+      <article className="rounded-3xl bg-primary px-5 py-5 text-primary-foreground">
+        <p className="text-sm font-medium opacity-80">Spent this month</p>
+        <p className="mt-1 font-mono text-4xl font-semibold tracking-tight">
+          {formatCents(insights.monthSpentCents)}
+        </p>
+        <p className="mt-2 text-sm opacity-80">
+          Logged purchases in {insights.monthLabel}.
+        </p>
+        <p className="mt-3 text-sm">
+          <Link href="/activity" className="font-medium underline underline-offset-4">
+            Activity
+          </Link>
+          <span className="opacity-70"> · </span>
+          <Link href="/month" className="font-medium underline underline-offset-4">
+            Calendar
+          </Link>
+        </p>
+      </article>
 
       <article className="rounded-3xl bg-card px-5 py-5 ring-1 ring-foreground/10">
         <p className="text-sm text-muted-foreground">What&apos;s next</p>
