@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   consumeGreeting,
   firstName,
-  greetingForHour,
+  greetingForDate,
   GREETING_MS,
   GREETING_REDUCED_MS,
   type TimeOfDayGreeting,
@@ -29,7 +29,7 @@ export function GreetingOverlay({ name }: { name: string }) {
         return;
       }
       if (!alive) return;
-      setPhrase(greetingForHour(new Date().getHours()));
+      setPhrase(greetingForDate(new Date()));
     });
     return () => {
       alive = false;

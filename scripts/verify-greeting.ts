@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   consumeGreeting,
   firstName,
+  greetingForDate,
   greetingForHour,
   GREETING_MS,
   GREETING_REDUCED_MS,
@@ -34,6 +35,21 @@ expectEq("noon is afternoon", greetingForHour(12), "Good afternoon");
 expectEq("16 is afternoon", greetingForHour(16), "Good afternoon");
 expectEq("17 is evening", greetingForHour(17), "Good evening");
 expectEq("23 is evening", greetingForHour(23), "Good evening");
+expectEq(
+  "chicago morning",
+  greetingForDate(new Date("2026-10-06T15:00:00Z")),
+  "Good morning"
+);
+expectEq(
+  "chicago afternoon",
+  greetingForDate(new Date("2026-10-06T17:30:00Z")),
+  "Good afternoon"
+);
+expectEq(
+  "chicago evening",
+  greetingForDate(new Date("2026-10-06T22:00:00Z")),
+  "Good evening"
+);
 expectEq("first name", firstName("Arjun Kale"), "Arjun");
 expectEq("already first", firstName("Arjun"), "Arjun");
 expectEq("blank name falls back", firstName("   "), "Arjun");

@@ -1,3 +1,5 @@
+import { chicagoNow } from "./dates";
+
 /** Session flag for the post-unlock home greeting (DOLLA-9). */
 export const GREETING_STORAGE_KEY = "dolla.greeting";
 
@@ -14,11 +16,16 @@ type GreetingStore = {
   setItem(key: string, value: string): void;
 };
 
-/** Local hour: morning before 12:00, afternoon until 17:00, evening after that. */
+/** Morning before 12:00, afternoon until 17:00, evening after that. */
 export function greetingForHour(hour: number): TimeOfDayGreeting {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+/** Same America/Chicago clock as the home header. */
+export function greetingForDate(date = new Date()): TimeOfDayGreeting {
+  return greetingForHour(chicagoNow(date).getHours());
 }
 
 export function firstName(name: string): string {
