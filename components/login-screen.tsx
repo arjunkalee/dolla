@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Delete, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { requestGreetingAfterUnlock } from "@/lib/greeting";
 import { cn } from "@/lib/utils";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"] as const;
@@ -46,6 +47,7 @@ export function LoginScreen() {
         setPin("");
         return;
       }
+      requestGreetingAfterUnlock();
       router.replace(search.get("next") || "/");
       router.refresh();
     } finally {

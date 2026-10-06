@@ -11,7 +11,8 @@
     "test:csv": "tsx scripts/verify-csv-import.ts",
     "test:freshness": "tsx scripts/verify-freshness.ts",
     "test:past-due": "tsx scripts/verify-past-due.ts",
-    "test:home": "tsx scripts/verify-home-hero.ts"
+    "test:home": "tsx scripts/verify-home-hero.ts",
+    "test:greeting": "tsx scripts/verify-greeting.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
