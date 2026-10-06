@@ -125,3 +125,54 @@
     touch-action: manipulation;
   }
 }
+
+@keyframes dolla-greet-overlay {
+  0% {
+    opacity: 0;
+  }
+  28.57% {
+    opacity: 1;
+  }
+  71.43% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes dolla-greet-copy {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  28.57% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  71.43% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
+
+.dolla-greet-overlay {
+  animation: dolla-greet-overlay 1.4s ease forwards;
+}
+
+.dolla-greet-copy {
+  animation: dolla-greet-copy 1.4s ease forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dolla-greet-overlay,
+  .dolla-greet-copy {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
