@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { envelopeSpend } from "@/lib/envelope-spend";
 import { formatCents, dollarsToCents } from "@/lib/money";
 import type { CategoryId, SplitAllocation } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,10 @@ type Bucket = {
   optedIn?: boolean;
   suggestedCents?: number;
   categoryId?: CategoryId;
+  spentCents?: number;
+  budgetCents?: number;
+  remainingCents?: number;
+  empty?: boolean;
 };
 
 function useCountUp(target: number, duration = 720) {
@@ -64,6 +69,9 @@ export function SplitScreen() {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
 
+  const poured = useCountUp(state?.paycheck.netCents ?? 0);
+  const leftoverShown = useCountUp(insights?.splitPlayLeftoverCents ?? 0);
+
   useEffect(() => {
     const id = window.setTimeout(() => setReady(true), 40);
     return () => window.clearTimeout(id);
@@ -85,16 +93,24 @@ export function SplitScreen() {
         : "oklch(0.78 0.12 70)",
   }));
 
-  const envelopeBuckets: Bucket[] = insights.splitAllocations.map((a) => ({
-    id: a.categoryId,
-    label: a.name.replace(/ \/ .+$/, ""),
-    cents: a.cents,
-    kind: "envelope",
-    optedIn: a.optedIn,
-    suggestedCents: a.suggestedCents,
-    categoryId: a.categoryId,
-    color: ENVELOPE_COLORS[a.categoryId] ?? "oklch(0.7 0.06 145)",
-  }));
+  const envelopeBuckets: Bucket[] = insights.splitAllocations.map((a) => {
+    const spend = envelopeSpend(insights.categories, a.categoryId);
+    return {
+      id: a.categoryId,
+      label: a.name.replace(/ \/ .+$/, ""),
+      cents: a.cents,
+      kind: "envelope" as const,
+      optedIn: a.optedIn,
+      suggestedCents: a.suggestedCents,
+      categoryId: a.categoryId,
+      color: ENVELOPE_COLORS[a.categoryId] ?? "oklch(0.7 0.06 145)",
+      spentCents: spend.spentCents,
+      budgetCents: spend.budgetCents,
+      remainingCents: spend.remainingCents,
+      empty: spend.empty,
+    };
+  });
+  const listedSpentCents = envelopeBuckets.reduce((sum, b) => sum + (b.spentCents ?? 0), 0);
 
   const leftover: Bucket = {
     id: "leftover",
@@ -104,8 +120,6 @@ export function SplitScreen() {
     color: "oklch(0.84 0.16 145)",
   };
 
-  const poured = useCountUp(state.paycheck.netCents);
-  const leftoverShown = useCountUp(leftover.cents);
   const maxVisual = Math.max(
     ...billBuckets.map((b) => b.cents),
     ...envelopeBuckets.map((b) => Math.max(b.cents, b.suggestedCents ?? 0, 12_000)),
@@ -178,7 +192,10 @@ export function SplitScreen() {
       <section>
         <h2 className="mb-1 text-sm font-medium">Envelopes · play, not withdrawn</h2>
         <p className="mb-2 text-xs text-muted-foreground">
-          Suggested half of each monthly envelope. Leftover only subtracts ones you count.
+          Spent against each monthly envelope. Empty ones stay listed.
+          {listedSpentCents === insights.monthSpentCents
+            ? ` ${formatCents(listedSpentCents)} matches Spent this month.`
+            : ` These envelopes ${formatCents(listedSpentCents)}. Spent this month ${formatCents(insights.monthSpentCents)}.`}
         </p>
         <div className="grid grid-cols-2 gap-2">
           {envelopeBuckets.map((bucket, i) => (
@@ -238,12 +255,14 @@ export function SplitScreen() {
                   {openBucket.kind === "bill"
                     ? "Due from this paycheck. Amount is the bill, not a prediction."
                     : openBucket.kind === "envelope"
-                      ? "A plan. Leftover does not subtract this unless you count it."
+                      ? "Spent against the monthly envelope. The field below is this paycheck's plan."
                       : "Paycheck minus this-check bills minus envelope amounts you are playing with."}
                 </DrawerDescription>
               </DrawerHeader>
               <div className="space-y-3 px-4 pb-2">
-                <p className="font-mono text-3xl font-semibold">{formatCents(openBucket.cents)}</p>
+                {openBucket.kind !== "envelope" && (
+                  <p className="font-mono text-3xl font-semibold">{formatCents(openBucket.cents)}</p>
+                )}
                 {openBucket.kind === "bill" && insights.formulas.cards && (
                   <FormulaBlock
                     formula={
@@ -257,6 +276,25 @@ export function SplitScreen() {
                 )}
                 {openBucket.kind === "envelope" && openBucket.categoryId && (
                   <>
+                    <p
+                      className={cn(
+                        "font-mono text-3xl font-semibold",
+                        openBucket.empty && "font-medium text-muted-foreground/80"
+                      )}
+                    >
+                      {formatCents(openBucket.spentCents ?? 0)}
+                      <span className="text-lg font-normal text-muted-foreground">
+                        {" "}
+                        / {formatCents(openBucket.budgetCents ?? 0)}
+                      </span>
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {openBucket.empty
+                        ? "Empty this month."
+                        : openBucket.remainingCents !== undefined && openBucket.remainingCents < 0
+                          ? `Over by ${formatCents(Math.abs(openBucket.remainingCents))}.`
+                          : `${formatCents(openBucket.remainingCents ?? 0)} left this month.`}
+                    </p>
                     <Input
                       inputMode="decimal"
                       value={draft}
@@ -338,17 +376,33 @@ function BucketCard({
   wide?: boolean;
   onOpen: () => void;
 }) {
+  const empty = bucket.kind === "envelope" && Boolean(bucket.empty);
+  const budgetCents = bucket.budgetCents ?? 0;
+  const spentCents = bucket.spentCents ?? 0;
+  const spendRatio =
+    budgetCents > 0 ? Math.min(1, spentCents / budgetCents) : spentCents > 0 ? 1 : 0;
   const visual = Math.max(bucket.cents, bucket.suggestedCents ?? 0, 8_000);
-  const fill = Math.max(8, Math.round((visual / max) * 88));
-  const filled = bucket.cents > 0;
+  const fill =
+    bucket.kind === "envelope"
+      ? empty
+        ? 8
+        : Math.max(24, Math.round(spendRatio * 92))
+      : Math.max(8, Math.round((visual / max) * 88));
+  const filled = bucket.kind === "envelope" ? !empty : bucket.cents > 0;
   const shown = useCountUp(bucket.cents);
+  const spentShown = useCountUp(spentCents);
 
   return (
     <button
       type="button"
       onClick={onOpen}
+      data-envelope={bucket.kind === "envelope" ? (empty ? "empty" : "populated") : undefined}
+      data-spent-cents={bucket.kind === "envelope" ? spentCents : undefined}
+      data-budget-cents={bucket.kind === "envelope" ? budgetCents : undefined}
       className={cn(
-        "relative min-h-[7.5rem] overflow-hidden rounded-2xl bg-card text-left ring-1 ring-foreground/10 transition-transform active:scale-[0.98]",
+        "relative overflow-hidden rounded-2xl text-left ring-1 transition-transform active:scale-[0.98]",
+        bucket.kind === "envelope" ? "min-h-[8.75rem]" : "min-h-[7.5rem]",
+        empty ? "bg-muted/50 text-muted-foreground ring-foreground/5" : "bg-card ring-foreground/10",
         wide && "col-span-2"
       )}
     >
@@ -359,23 +413,62 @@ function BucketCard({
           background: `linear-gradient(180deg, color-mix(in oklch, ${bucket.color} 55%, transparent), ${bucket.color})`,
           transform: ready ? "scaleY(1)" : "scaleY(0)",
           transitionDelay: `${delay}ms`,
-          opacity: filled ? 0.95 : 0.22,
+          opacity: filled ? 0.95 : 0.16,
         }}
       />
-      <span className="relative flex h-full min-h-[7.5rem] flex-col justify-between px-3 py-3">
-        <span className="text-sm font-medium leading-tight">{bucket.label}</span>
+      <span
+        className={cn(
+          "relative flex h-full flex-col justify-between px-3 py-3",
+          bucket.kind === "envelope" ? "min-h-[8.75rem]" : "min-h-[7.5rem]"
+        )}
+      >
+        <span className={cn("text-sm font-medium leading-tight", empty && "text-muted-foreground")}>
+          {bucket.label}
+        </span>
         <span>
-          <span className="block font-mono text-lg font-semibold">{formatCents(shown)}</span>
-          {bucket.kind === "envelope" && (
-            <span className="text-[11px] text-muted-foreground">
-              {bucket.optedIn ? "Counted" : "Plan only"}
-              {bucket.suggestedCents
-                ? ` · suggest ${formatCents(bucket.suggestedCents)}`
-                : ""}
-            </span>
-          )}
-          {bucket.kind === "bill" && (
-            <span className="text-[11px] text-muted-foreground">Due this check</span>
+          {bucket.kind === "envelope" ? (
+            <>
+              <span
+                className={cn(
+                  "block font-mono text-lg font-semibold",
+                  empty && "font-medium text-muted-foreground/75"
+                )}
+              >
+                {formatCents(spentShown)}
+                <span
+                  className={cn(
+                    "ml-1 text-xs font-normal",
+                    empty ? "text-muted-foreground/60" : "text-muted-foreground"
+                  )}
+                >
+                  / {formatCents(budgetCents)}
+                </span>
+              </span>
+              <span
+                className={cn(
+                  "block text-[11px]",
+                  empty ? "text-muted-foreground/70" : "text-muted-foreground"
+                )}
+              >
+                {empty
+                  ? "Empty this month"
+                  : bucket.remainingCents !== undefined && bucket.remainingCents < 0
+                    ? `Over ${formatCents(Math.abs(bucket.remainingCents))}`
+                    : `Left ${formatCents(bucket.remainingCents ?? 0)}`}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                {bucket.optedIn ? "Counted" : "Plan only"}
+                {bucket.cents > 0 ? ` · ${formatCents(shown)}` : ""}
+                {bucket.suggestedCents ? ` · suggest ${formatCents(bucket.suggestedCents)}` : ""}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="block font-mono text-lg font-semibold">{formatCents(shown)}</span>
+              {bucket.kind === "bill" && (
+                <span className="text-[11px] text-muted-foreground">Due this check</span>
+              )}
+            </>
           )}
         </span>
       </span>
