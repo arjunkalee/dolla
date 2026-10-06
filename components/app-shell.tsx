@@ -2,20 +2,35 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, CircleUser, Layers, MessageCircle, Receipt } from "lucide-react";
+import {
+  CalendarDays,
+  CircleUser,
+  House,
+  Layers,
+  MessageCircle,
+  Receipt,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { activeNavHref, NAV_TABS, type NavTabHref } from "@/lib/nav";
 import { useDolla } from "./dolla-provider";
 import { LogPurchaseDrawer } from "./log-purchase";
 
-const TABS = [
-  { href: "/month", label: "Calendar", icon: CalendarDays },
-  { href: "/split", label: "Split", icon: Layers },
-  { href: "/chat", label: "Chat", icon: MessageCircle },
-  { href: "/profile", label: "Profile", icon: CircleUser },
-];
+const ICONS: Record<NavTabHref, LucideIcon> = {
+  "/": House,
+  "/month": CalendarDays,
+  "/split": Layers,
+  "/chat": MessageCircle,
+  "/profile": CircleUser,
+};
+
+/** Three destinations, then the raised Log button, then the rest — Log stays centered. */
+const LEFT_TABS = NAV_TABS.slice(0, 3);
+const RIGHT_TABS = NAV_TABS.slice(3);
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const activeHref = activeNavHref(pathname);
   const { setLogOpen, loading, error, refresh } = useDolla();
 
   return (
@@ -44,15 +59,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-lg border-t border-border/80 bg-background/95 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-md">
-        <div className="grid grid-cols-5 items-end px-1">
-          {TABS.slice(0, 2).map((tab) => (
-            <TabLink key={tab.href} tab={tab} active={pathname === tab.href} />
-          ))}
+      <nav
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-lg border-t border-border/80 bg-background/95 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-md"
+      >
+        <div className="flex items-end px-1">
+          <div className="grid min-w-0 flex-1 grid-cols-3">
+            {LEFT_TABS.map((tab) => (
+              <TabLink key={tab.href} tab={tab} active={activeHref === tab.href} />
+            ))}
+          </div>
           <button
             type="button"
             onClick={() => setLogOpen(true)}
-            className="-mt-5 flex flex-col items-center justify-end gap-1 pb-1"
+            className="-mt-5 flex w-16 shrink-0 flex-col items-center justify-end gap-1 pb-1"
             aria-label="Log a purchase"
           >
             <span className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_8px_24px_rgba(90,180,110,0.35)]">
@@ -60,19 +80,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
             <span className="text-[11px] font-medium text-primary">Log</span>
           </button>
-          {TABS.slice(2).map((tab) => {
-            const extraActive =
-              (tab.href === "/split" && pathname === "/plan") ||
-              (tab.href === "/profile" &&
-                ["/", "/plan", "/activity", "/savings", "/budget", "/bills"].includes(pathname));
-            return (
-              <TabLink
-                key={tab.href}
-                tab={tab}
-                active={pathname === tab.href || extraActive}
-              />
-            );
-          })}
+          <div className="grid min-w-0 flex-1 grid-cols-2">
+            {RIGHT_TABS.map((tab) => (
+              <TabLink key={tab.href} tab={tab} active={activeHref === tab.href} />
+            ))}
+          </div>
         </div>
       </nav>
       <LogPurchaseDrawer />
@@ -84,20 +96,21 @@ function TabLink({
   tab,
   active,
 }: {
-  tab: (typeof TABS)[number];
+  tab: (typeof NAV_TABS)[number];
   active: boolean;
 }) {
-  const Icon = tab.icon;
+  const Icon = ICONS[tab.href];
   return (
     <Link
       href={tab.href}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "flex min-h-12 flex-col items-center justify-center gap-0.5 text-[11px] font-medium",
+        "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 text-[11px] font-medium",
         active ? "text-primary" : "text-muted-foreground"
       )}
     >
-      <Icon className="size-5" />
-      {tab.label}
+      <Icon className="size-5 shrink-0" />
+      <span className="whitespace-nowrap">{tab.label}</span>
     </Link>
   );
 }
