@@ -13,7 +13,8 @@
     "test:past-due": "tsx scripts/verify-past-due.ts",
     "test:home": "tsx scripts/verify-home-hero.ts",
     "test:greeting": "tsx scripts/verify-greeting.ts",
-    "test:nav": "tsx scripts/verify-home-nav.ts"
+    "test:nav": "tsx scripts/verify-home-nav.ts",
+    "test:split": "tsx scripts/verify-split-envelopes.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
