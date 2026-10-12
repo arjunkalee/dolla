@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   }
   const body = (await request.json().catch(() => null)) as { pin?: string } | null;
   const candidate = body?.pin?.trim() ?? "";
-  if (!verifyPin(candidate)) {
+  if (!(await verifyPin(candidate))) {
     return NextResponse.json({ error: "Wrong PIN." }, { status: 401 });
   }
   const token = await createSessionToken();
