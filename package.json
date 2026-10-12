@@ -15,7 +15,8 @@
     "test:greeting": "tsx scripts/verify-greeting.ts",
     "test:nav": "tsx scripts/verify-home-nav.ts",
     "test:split": "tsx scripts/verify-split-envelopes.ts",
-    "test:pin": "tsx scripts/verify-pin.ts"
+    "test:pin": "tsx scripts/verify-pin.ts",
+    "test:budget": "tsx scripts/verify-budget.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

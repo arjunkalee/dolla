@@ -24,8 +24,10 @@ expectEq("calendar stays on its route", activeNavHref("/month"), "/month");
 expectEq("split stays on its route", activeNavHref("/split"), "/split");
 expectEq("chat stays on its route", activeNavHref("/chat"), "/chat");
 expectEq("profile stays on its route", activeNavHref("/profile"), "/profile");
+expectEq("budget tab label", NAV_TABS.find((tab) => tab.href === "/budget")?.label, "Budget");
+expectEq("budget is active on /budget", activeNavHref("/budget"), "/budget");
 
-for (const pathname of ["/", "/plan", "/activity", "/savings", "/budget", "/bills"]) {
+for (const pathname of ["/", "/plan", "/activity", "/savings", "/budget", "/bills", "/envelopes"]) {
   const active = activeNavHref(pathname);
   expect(
     `${pathname} does not highlight profile`,
@@ -34,7 +36,7 @@ for (const pathname of ["/", "/plan", "/activity", "/savings", "/budget", "/bill
   );
 }
 
-for (const pathname of ["/plan", "/activity", "/savings", "/budget", "/bills"]) {
+for (const pathname of ["/plan", "/activity", "/savings", "/bills", "/envelopes"]) {
   expectEq(`${pathname} highlights nothing`, activeNavHref(pathname), null);
 }
 
@@ -44,6 +46,7 @@ const greeting = readFileSync(path.join(root, "lib/greeting.ts"), "utf8");
 const overlay = readFileSync(path.join(root, "components/greeting-overlay.tsx"), "utf8");
 
 expect("shell renders a Home tab", shell.includes('"/": House') || shell.includes("House"));
+expect("shell renders a Budget tab", shell.includes('"/budget": PieChart'));
 expect("shell links home through the nav tabs", shell.includes("NAV_TABS"));
 expect("shell dropped extraActive", !shell.includes("extraActive"));
 expect("shell does not treat home as profile", !shell.includes('["/", "/plan"'));

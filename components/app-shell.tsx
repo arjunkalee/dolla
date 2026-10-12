@@ -8,6 +8,7 @@ import {
   House,
   Layers,
   MessageCircle,
+  PieChart,
   Receipt,
   type LucideIcon,
 } from "lucide-react";
@@ -20,8 +21,15 @@ const ICONS: Record<NavTabHref, LucideIcon> = {
   "/": House,
   "/month": CalendarDays,
   "/split": Layers,
+  "/budget": PieChart,
   "/chat": MessageCircle,
   "/profile": CircleUser,
+};
+
+const TAB_COLS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
 };
 
 /** Three destinations, then the raised Log button, then the rest — Log stays centered. */
@@ -64,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-lg border-t border-border/80 bg-background/95 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-md"
       >
         <div className="flex items-end px-1">
-          <div className="grid min-w-0 flex-1 grid-cols-3">
+          <div className={cn("grid min-w-0 flex-1", TAB_COLS[LEFT_TABS.length] ?? "grid-cols-3")}>
             {LEFT_TABS.map((tab) => (
               <TabLink key={tab.href} tab={tab} active={activeHref === tab.href} />
             ))}
@@ -80,7 +88,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
             <span className="text-[11px] font-medium text-primary">Log</span>
           </button>
-          <div className="grid min-w-0 flex-1 grid-cols-2">
+          <div className={cn("grid min-w-0 flex-1", TAB_COLS[RIGHT_TABS.length] ?? "grid-cols-3")}>
             {RIGHT_TABS.map((tab) => (
               <TabLink key={tab.href} tab={tab} active={activeHref === tab.href} />
             ))}
@@ -105,7 +113,7 @@ function TabLink({
       href={tab.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 text-[11px] font-medium",
+        "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 text-[10px] font-medium leading-none tracking-tight min-[400px]:text-[11px]",
         active ? "text-primary" : "text-muted-foreground"
       )}
     >
