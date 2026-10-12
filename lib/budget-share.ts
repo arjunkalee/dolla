@@ -2,7 +2,11 @@
  * Monthly budget shares for the Budget tab.
  * Envelope amounts come from the budget sheet (`insights.categories`).
  * Invest is the month leftover after those envelopes, clamped at $0.
+ * Percentage math stays in `largestRemainderPercents`. Display helpers
+ * only choose whether a dollar figure is included next to those percents.
  */
+
+import { formatCents } from "./money";
 
 export const INVEST_SHARE_ID = "invest";
 
@@ -135,4 +139,38 @@ export function budgetBreakdown(input: {
       color: budgetSliceColor(row.id),
     })),
   };
+}
+
+/**
+ * Outside the donut, only slices this wide stay readable on a phone.
+ * Smaller slices keep their percent in the tooltip and the list.
+ */
+export const PIE_LABEL_MIN_PERCENT = 8;
+
+export function pieShowsOutsideLabel(percent: number): boolean {
+  return percent >= PIE_LABEL_MIN_PERCENT;
+}
+
+/** Name plus percent, with the dollar amount only when it is meant to be visible. */
+export function budgetSliceCaption(
+  share: Pick<BudgetShare, "name" | "cents" | "percent">,
+  hideDollars: boolean
+): string {
+  if (hideDollars) return `${share.name} · ${share.percent}%`;
+  return `${share.name} · ${formatCents(share.cents)} · ${share.percent}%`;
+}
+
+/** Center of the pie: the total in dollars, or 100% when amounts are hidden. */
+export function budgetCenterText(totalCents: number, hideDollars: boolean): string {
+  if (hideDollars) return totalCents > 0 ? "100%" : "0%";
+  return formatCents(totalCents);
+}
+
+export function budgetTakeHomeNote(overTakeHome: boolean, hideDollars: boolean): string {
+  if (!overTakeHome) {
+    return "Envelopes plus Invest, the leftover after those envelopes.";
+  }
+  return hideDollars
+    ? "Envelopes are above take-home, so Invest is 0%."
+    : "Envelopes are above take-home, so Invest is $0.";
 }
