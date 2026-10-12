@@ -23,7 +23,7 @@ function initialsFromName(name: string): string {
 const TOOL_LINKS = [
   { href: "/bills", label: "Balances & bills" },
   { href: "/savings", label: "Leftover math" },
-  { href: "/budget", label: "Envelopes" },
+  { href: "/envelopes", label: "Envelopes" },
   { href: "/activity", label: "All activity" },
   { href: "/savings", label: "eTrade / Roth / HYSA" },
   { href: "/split", label: "Split" },
