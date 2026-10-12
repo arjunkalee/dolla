@@ -1,6 +1,16 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { BUDGET_SLICE_COLORS, budgetBreakdown, largestRemainderPercents } from "../lib/budget-share";
+import {
+  BUDGET_SLICE_COLORS,
+  budgetBreakdown,
+  budgetCenterText,
+  budgetSliceCaption,
+  budgetTakeHomeNote,
+  largestRemainderPercents,
+  pieShowsOutsideLabel,
+} from "../lib/budget-share";
+import { formatCents } from "../lib/money";
+import { parseHideDollars, serializeHideDollars } from "../lib/hide-dollars";
 import { computeInsights } from "../lib/plan";
 import { DEFAULT_CATEGORIES, realState } from "../lib/seed";
 
@@ -148,9 +158,43 @@ assertLargestRemainder(
   short.shares.map((share) => share.percent)
 );
 
+expectEq("hidden means stored 1", parseHideDollars("1"), true);
+expectEq("visible means anything else", parseHideDollars("0"), false);
+expectEq("missing storage shows dollars", parseHideDollars(null), false);
+expectEq("serialize hidden", serializeHideDollars(true), "1");
+expectEq("serialize visible", serializeHideDollars(false), "0");
+
+for (const share of breakdown.shares) {
+  const shown = budgetSliceCaption(share, false);
+  const hidden = budgetSliceCaption(share, true);
+  expect(`${share.id} shown caption keeps its percent`, shown.includes(`${share.percent}%`));
+  expect(`${share.id} shown caption includes dollars`, shown.includes("$"));
+  expectEq(`${share.id} hidden caption`, hidden, `${share.name} · ${share.percent}%`);
+  expect(`${share.id} hidden caption has no dollars`, !hidden.includes("$"));
+}
+expectEq(
+  "center uses the same dollars as the list",
+  budgetCenterText(breakdown.totalCents, false),
+  formatCents(breakdown.totalCents)
+);
+expectEq("center hides dollars as 100%", budgetCenterText(breakdown.totalCents, true), "100%");
+expectEq("empty center hides as 0%", budgetCenterText(0, true), "0%");
+expect(
+  "over-budget note hides the zero dollar",
+  !budgetTakeHomeNote(true, true).includes("$") && budgetTakeHomeNote(true, true).includes("0%")
+);
+expect("over-budget note shows $0 when dollars are visible", budgetTakeHomeNote(true, false).includes("$0"));
+
+const rentShare = breakdown.shares.find((share) => share.id === "rent");
+const gasShare = breakdown.shares.find((share) => share.id === "gas");
+expect("rent is wide enough for an outside label", pieShowsOutsideLabel(rentShare?.percent ?? 0));
+expect("invest is wide enough for an outside label", pieShowsOutsideLabel(invest?.percent ?? 0));
+expect("gas stays off the pie so small slices do not collide", !pieShowsOutsideLabel(gasShare?.percent ?? 100));
+
 const root = process.cwd();
 const screen = readFileSync(path.join(root, "components/budget-breakdown-screen.tsx"), "utf8");
 const shareLib = readFileSync(path.join(root, "lib/budget-share.ts"), "utf8");
+const hideLib = readFileSync(path.join(root, "lib/hide-dollars.ts"), "utf8");
 const nav = readFileSync(path.join(root, "lib/nav.ts"), "utf8");
 const page = readFileSync(path.join(root, "app/(app)/budget/page.tsx"), "utf8");
 
@@ -159,6 +203,12 @@ expect("screen reads envelope budgets from insights", screen.includes("insights.
 expect("screen reads monthly take-home", screen.includes("insights.monthIncomeCents"));
 expect("screen reads the month leftover", screen.includes("insights.savingsSuggestion.leftoverMonthCents"));
 expect("pie and list share slice color", screen.includes("share.color"));
+expect("toggle exposes pressed state", screen.includes("aria-pressed={hideDollars}"));
+expect("toggle names both actions", screen.includes("Show dollar amounts") && screen.includes("Hide dollar amounts"));
+expect("toggle uses an eye icon", screen.includes("EyeOff") && screen.includes("<Eye"));
+expect("pie center, tooltip, and labels follow the toggle", screen.includes("budgetCenterText") && screen.includes("budgetSliceCaption") && screen.includes("pieShowsOutsideLabel"));
+expect("choice is stored in localStorage", hideLib.includes("localStorage") && hideLib.includes("dolla.budget.hideDollars"));
+expect("percentage helper is still the only apportionment", shareLib.includes("export function largestRemainderPercents"));
 expect("page mounts the breakdown", page.includes("BudgetBreakdownScreen"));
 expect("nav has a Budget tab", nav.includes('label: "Budget"') && nav.includes('href: "/budget"'));
 expect(
