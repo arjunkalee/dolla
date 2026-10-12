@@ -37,7 +37,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Default local PIN is `4826` (override with `DOLLA_PIN`).
+Open [http://localhost:3000](http://localhost:3000). Unlock uses the built-in salted PIN, checked on the server. Set `DOLLA_PIN` only to override that hash.
 
 ```bash
 npm run build
@@ -52,7 +52,7 @@ Local data is written to `data/dolla.json` (gitignored). On Vercel, `saveState` 
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DOLLA_PIN` | Yes in production | Unlock PIN or password. Local default is `4826` if unset. |
+| `DOLLA_PIN` | No | Optional override of the built-in salted PIN hash in `lib/auth.ts`. |
 | `DOLLA_SESSION_SECRET` | Yes in production | Signs the session cookie. Use a long random string. |
 | `TURSO_DATABASE_URL` | Turso option | libSQL/Turso URL. Either Turso or Upstash/KV is required for writes on Vercel. |
 | `TURSO_AUTH_TOKEN` | With Turso | Turso auth token. |
@@ -81,7 +81,7 @@ On Vercel, pick **either** Turso **or** Upstash Redis. Without one of those, Dol
 ## Deploy on Vercel
 
 1. Push this repo and import it in Vercel (Framework Preset: Next.js).
-2. Set `DOLLA_PIN` and `DOLLA_SESSION_SECRET`.
+2. Set `DOLLA_SESSION_SECRET`. Set `DOLLA_PIN` only if you want to override the built-in hash.
 3. Set Turso or KV as above.
 4. Deploy. The production URL is gated by the PIN — it is not a public ledger.
 
