@@ -13,7 +13,7 @@ This is Arjun’s real ledger. Checking, dated bills, and envelopes load as of A
 - **Split** — this paycheck pours into bills, envelopes, and leftover-to-invest. Envelopes are a plan until you count them.
 - **Two leftovers, never mixed** — leftover from this paycheck (can be negative) vs leftover in checking (prior cash plus the deposit). Every headline expands into labeled arithmetic.
 - **Amex default off** — reserved from the next paycheck unless you toggle it.
-- **Chat** — PIN-gated tab. Commands still edit the ledger: “log $10 dining”, “checking is 5100”, “Apple Card is paid”, “change groceries to 300”. Anything the parser does not recognize goes to Claude (read-only; it cannot edit yet) through `POST /api/assistant`. A monthly spend cap is tracked in the same durable store.
+- **Chat** — PIN-gated tab. Commands still edit the ledger: “log $10 dining”, “checking is 5100”, “Apple Card is paid”, “change groceries to 300”. Anything the parser does not recognize goes to Claude (read-only; it cannot edit yet) through `POST /api/assistant`. Suggested prompts sit above the composer. Short preferences (“I get paid on Fridays”) are saved next to the ledger and can be deleted on Profile. A monthly spend cap is tracked in the same durable store; Profile shows month-to-date spend, request count, and the last reset date.
 - **Destinations** — eTrade, Roth, HYSA. 401k match is employer. Travel and Misc stay spend envelopes.
 - **Live logging** — one-thumb Log. Checking, envelopes, and leftover formulas update immediately.
 
@@ -44,6 +44,7 @@ npm run build
 npm start
 npm run test:store
 npm run test:csv
+npm run test:assistant-evals
 ```
 
 Local data is written to `data/dolla.json` (gitignored). On Vercel, `saveState` / `resetData("real")` go through Turso or Upstash — never `/tmp`.

@@ -7,6 +7,7 @@ import { sanitizeCitations } from "@/lib/assistant/web-search";
 import { parseChat } from "@/lib/chat";
 import type { ChatCitation } from "@/lib/types";
 import { CitationLinks } from "./citation-links";
+import { SuggestedPrompts } from "./suggested-prompts";
 import { useDolla } from "./dolla-provider";
 
 type Spend = {
@@ -62,8 +63,8 @@ export function ChatScreen() {
       previous.text === draft.user
   );
 
-  async function submit() {
-    const value = text.trim();
+  async function submit(raw?: string) {
+    const value = (raw ?? text).trim();
     if (!value || busy || !state) return;
     setBusy(true);
     setError(null);
@@ -183,11 +184,7 @@ export function ChatScreen() {
       <div className="flex-1 space-y-3" aria-live="polite">
         {state.chatMessages.length === 0 && !draft && (
           <div className="rounded-2xl bg-card px-4 py-4 text-sm text-muted-foreground ring-1 ring-foreground/10">
-            <p>Examples:</p>
-            <p className="mt-2 font-mono text-xs text-foreground">log $10 dining</p>
-            <p className="font-mono text-xs text-foreground">change groceries to 300</p>
-            <p className="font-mono text-xs text-foreground">how much is left for dining?</p>
-            <p className="font-mono text-xs text-foreground">Apple Card is paid</p>
+            Tap a prompt below, or edit with a command like “log $10 dining”.
           </div>
         )}
         {state.chatMessages.map((message) => (
@@ -218,6 +215,7 @@ export function ChatScreen() {
           void submit();
         }}
       >
+        <SuggestedPrompts disabled={busy} onPick={(prompt) => void submit(prompt)} />
         <div className="flex gap-2">
           <input
             value={text}

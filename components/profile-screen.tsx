@@ -12,6 +12,7 @@ import { formatLongDate } from "@/lib/dates";
 import type { CsvImportMeta } from "@/lib/csv";
 import { useDolla } from "./dolla-provider";
 import { AsOfText } from "./as-of";
+import { AssistantPanel } from "./assistant-panel";
 
 function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -179,6 +180,8 @@ export function ProfileScreen() {
           )}
         </Link>
       </section>
+
+      <AssistantPanel />
 
       <section>
         <h2 className="mb-2 px-1 text-sm font-medium">Accounts & tools</h2>
