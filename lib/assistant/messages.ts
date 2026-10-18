@@ -36,7 +36,7 @@ export function buildModelMessages(
   userText: string
 ): AssistantTurn[] {
   const prior = trimHistory(history);
-  const content = `Context (current Dolla numbers, not a request to edit):\n${snapshot}\n\nQuestion:\n${userText.trim()}`;
+  const content = `Context (orientation only — do not quote these dollars; call a tool and cite that result. Not a request to edit):\n${snapshot}\n\nQuestion:\n${userText.trim()}`;
   const last = prior[prior.length - 1];
   if (last?.role === "user") {
     return [

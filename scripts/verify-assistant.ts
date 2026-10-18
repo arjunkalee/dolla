@@ -226,6 +226,10 @@ async function main() {
   );
   expectEq("history ends with the question", trimmed[trimmed.length - 1]?.role, "user");
   expect("snapshot is on the user turn", trimmed[trimmed.length - 1]?.content.includes("SNAPSHOT"));
+  expect(
+    "user turn says to cite a tool",
+    trimmed[trimmed.length - 1]?.content.includes("call a tool")
+  );
   expect("question is on the user turn", trimmed[trimmed.length - 1]?.content.includes("how much is left?"));
   expect(
     "oldest turn was trimmed",
@@ -233,6 +237,11 @@ async function main() {
   );
 
   expect("prompt tools are read only", /tools only read/i.test(ASSISTANT_SYSTEM_PROMPT));
+  expect(
+    "prompt requires a tool before quoting dollars",
+    /call the matching tool before you answer/i.test(ASSISTANT_SYSTEM_PROMPT)
+  );
+  expect("prompt does not quote the context block", /Do not quote a dollar amount from the context block/.test(ASSISTANT_SYSTEM_PROMPT));
   expect("prompt refuses edits", /can.?t make edits yet/i.test(ASSISTANT_SYSTEM_PROMPT));
   expect("prompt explains invest leftover", /take-home minus the sum of the envelopes/i.test(ASSISTANT_SYSTEM_PROMPT));
   expect("prompt explains past-due", /treated as paid/i.test(ASSISTANT_SYSTEM_PROMPT));
