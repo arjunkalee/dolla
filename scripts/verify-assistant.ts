@@ -226,12 +226,22 @@ async function main() {
   );
   expectEq("history ends with the question", trimmed[trimmed.length - 1]?.role, "user");
   expect("snapshot is on the user turn", trimmed[trimmed.length - 1]?.content.includes("SNAPSHOT"));
+  expect(
+    "user turn says to cite a tool",
+    trimmed[trimmed.length - 1]?.content.includes("call a tool")
+  );
   expect("question is on the user turn", trimmed[trimmed.length - 1]?.content.includes("how much is left?"));
   expect(
     "oldest turn was trimmed",
     trimmed.every((turn) => !turn.content.includes("user-0") && !turn.content.includes("dolla-0"))
   );
 
+  expect("prompt tools are read only", /tools only read/i.test(ASSISTANT_SYSTEM_PROMPT));
+  expect(
+    "prompt requires a tool before quoting dollars",
+    /call the matching tool before you answer/i.test(ASSISTANT_SYSTEM_PROMPT)
+  );
+  expect("prompt does not quote the context block", /Do not quote a dollar amount from the context block/.test(ASSISTANT_SYSTEM_PROMPT));
   expect("prompt refuses edits", /can.?t make edits yet/i.test(ASSISTANT_SYSTEM_PROMPT));
   expect("prompt explains invest leftover", /take-home minus the sum of the envelopes/i.test(ASSISTANT_SYSTEM_PROMPT));
   expect("prompt explains past-due", /treated as paid/i.test(ASSISTANT_SYSTEM_PROMPT));
@@ -302,11 +312,27 @@ async function main() {
   expectEq("system cache", call.system[0]?.cache_control.type, "ephemeral");
   expectEq("system text is the prompt", call.system[0]?.text, ASSISTANT_SYSTEM_PROMPT);
   expect("snapshot is not in the system prompt", !call.system[0]?.text.includes("SnapshotOnlyCafe"));
-  expect("snapshot is in the user message", call.messages.at(-1)?.content.includes("SnapshotOnlyCafe"));
-  expect("checking is in the user message", call.messages.at(-1)?.content.includes("4,952.01"));
+  const lastContent = call.messages.at(-1)?.content;
+  expect(
+    "snapshot is in the user message",
+    typeof lastContent === "string" && lastContent.includes("SnapshotOnlyCafe")
+  );
+  expect(
+    "checking is in the user message",
+    typeof lastContent === "string" && lastContent.includes("4,952.01")
+  );
   expect(
     "history was trimmed",
-    call.messages.every((turn) => !turn.content.includes("user-0"))
+    call.messages.every((turn) => typeof turn.content !== "string" || !turn.content.includes("user-0"))
+  );
+  expectEq("last tool is cached", call.tools.at(-1)?.cache_control?.type, "ephemeral");
+  expect(
+    "earlier tools are outside the cache breakpoint",
+    call.tools.slice(0, -1).every((tool) => tool.cache_control == null)
+  );
+  expect(
+    "live checking balance is not in the tool definitions",
+    !JSON.stringify(call.tools).includes("4,952.01")
   );
   expectEq("reply was saved", open.saved[0]?.reply, "Dining has $12 left.");
   const month = open.ledger().months["2026-10"];

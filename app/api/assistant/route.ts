@@ -5,7 +5,8 @@ import { handleAssistantRequest } from "@/lib/assistant/handle";
 import { readMonthSpend } from "@/lib/assistant/usage";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+/** A few tool rounds can run longer than a single completion. */
+export const maxDuration = 120;
 
 async function sessionToken(): Promise<string | undefined> {
   const jar = await cookies();

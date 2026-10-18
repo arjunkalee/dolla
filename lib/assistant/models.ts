@@ -11,8 +11,8 @@ export function resolveAssistantModel(env: Record<string, string | undefined> = 
 
 /**
  * Sonnet 5.5 thinks before it answers unless told not to, and those tokens
- * count against max_tokens and the monthly cap. Phase 1 has no tools, so
- * skip the up-front thinking pass and keep effort low.
+ * count against max_tokens and the monthly cap. `between_tools` skips that
+ * up-front pass. Thinking can still run between tool calls, and effort stays low.
  */
 export function modelCallOptions(model: string): {
   thinking?: { type: "between_tools" };

@@ -23,6 +23,7 @@ export function ChatScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [lookingUp, setLookingUp] = useState(false);
   const [spend, setSpend] = useState<Spend | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -62,6 +63,7 @@ export function ChatScreen() {
     if (!value || busy || !state) return;
     setBusy(true);
     setError(null);
+    setLookingUp(false);
     setText("");
     try {
       const intent = parseChat(value, state);
@@ -81,6 +83,7 @@ export function ChatScreen() {
   }
 
   async function askAssistant(value: string) {
+    setLookingUp(false);
     setDraft({ user: value, reply: "", done: false });
     const res = await fetch("/api/assistant", {
       method: "POST",
@@ -125,13 +128,22 @@ export function ChatScreen() {
           type?: string;
           text?: string;
           message?: string;
+          status?: string;
           monthSpendUsd?: number;
           capUsd?: number;
         };
-        if (event.type === "delta" && event.text) {
+        if (event.type === "reset") {
+          reply = "";
+          setLookingUp(true);
+          setDraft({ user: value, reply: "", done: false });
+        } else if (event.type === "status" && event.status === "looking_up") {
+          setLookingUp(true);
+        } else if (event.type === "delta" && event.text) {
+          setLookingUp(false);
           reply += event.text;
           setDraft({ user: value, reply, done: false });
         } else if (event.type === "done") {
+          setLookingUp(false);
           if (typeof event.monthSpendUsd === "number" && typeof event.capUsd === "number") {
             setSpend({ monthSpendUsd: event.monthSpendUsd, capUsd: event.capUsd });
           }
@@ -176,7 +188,11 @@ export function ChatScreen() {
           <>
             <Bubble role="user" text={draft.user} />
             {(draft.reply || busy) && (
-              <Bubble role="dolla" text={draft.reply || "…"} pending={!draft.reply} />
+              <Bubble
+                role="dolla"
+                text={draft.reply || (lookingUp ? "looking up…" : "…")}
+                pending={!draft.reply}
+              />
             )}
           </>
         )}
