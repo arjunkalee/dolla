@@ -13,7 +13,7 @@ This is Arjun’s real ledger. Checking, dated bills, and envelopes load as of A
 - **Split** — this paycheck pours into bills, envelopes, and leftover-to-invest. Envelopes are a plan until you count them.
 - **Two leftovers, never mixed** — leftover from this paycheck (can be negative) vs leftover in checking (prior cash plus the deposit). Every headline expands into labeled arithmetic.
 - **Amex default off** — reserved from the next paycheck unless you toggle it.
-- **Chat** — PIN-gated tab. Deterministic parser: “checking is 5100”, “rent is 1450”, “Apple Card is paid”, “change groceries to 300”. Confirms with the new number and leftover math. No LLM.
+- **Chat** — PIN-gated tab. Commands still edit the ledger: “log $10 dining”, “checking is 5100”, “Apple Card is paid”, “change groceries to 300”. Anything the parser does not recognize goes to Claude (read-only; it cannot edit yet) through `POST /api/assistant`. A monthly spend cap is tracked in the same durable store.
 - **Destinations** — eTrade, Roth, HYSA. 401k match is employer. Travel and Misc stay spend envelopes.
 - **Live logging** — one-thumb Log. Checking, envelopes, and leftover formulas update immediately.
 
@@ -60,6 +60,9 @@ Local data is written to `data/dolla.json` (gitignored). On Vercel, `saveState` 
 | `KV_REST_API_TOKEN` | With KV | Pair with `KV_REST_API_URL`. Same role as `UPSTASH_REDIS_REST_TOKEN`. |
 | `UPSTASH_REDIS_REST_URL` | Alias of `KV_REST_API_URL` | Injected by Upstash. `lib/store.ts` accepts either URL name. |
 | `UPSTASH_REDIS_REST_TOKEN` | Alias of `KV_REST_API_TOKEN` | Pair with `UPSTASH_REDIS_REST_URL`. |
+| `ANTHROPIC_API_KEY` | For the assistant | Server-only key for `POST /api/assistant`. Never sent to the phone. |
+| `DOLLA_AI_MODEL` | No | Overrides the assistant model. Default is `claude-sonnet-5-5`. |
+| `DOLLA_AI_MONTHLY_CAP_USD` | No | Assistant spend cap per Chicago month. Default `10`. |
 
 On Vercel, pick **either** Turso **or** Upstash Redis. Without one of those, Dolla refuses to write (it will not use `/tmp`). The live project is **dolla-now** — do not create another project.
 
