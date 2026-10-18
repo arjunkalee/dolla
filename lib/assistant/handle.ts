@@ -11,6 +11,18 @@ import { MAX_OUTPUT_TOKENS, resolveAssistantModel } from "./models";
 import { cachedSystemPrompt } from "./prompt";
 import { costMicroUsd, microUsdToNumber, priceForModel, type TokenUsage } from "./pricing";
 import { buildStateSnapshot } from "./snapshot";
+import {
+  applyMemoryTool,
+  emptyMemory,
+  factFromStatement,
+  foldConversationSummary,
+  isMemoryTool,
+  persistAssistantMemory,
+  readAssistantMemory,
+  rememberFact,
+  withMemoryTools,
+  type AssistantMemory,
+} from "./memory";
 import { cachedAssistantTools, executeReadTool, type AssistantTool, type ToolOutcome } from "./tools";
 import {
   addRequestUsage,
@@ -51,6 +63,8 @@ type HandleInput = {
   appendExchange?: (userText: string, reply: string, citations?: ChatCitation[]) => Promise<void>;
   streamReply?: (args: AssistantStreamCall) => Promise<AssistantRound>;
   executeTool?: (state: AppState, name: string, input: unknown, now: Date) => ToolOutcome;
+  loadMemory?: () => Promise<AssistantMemory>;
+  saveMemory?: (memory: AssistantMemory) => Promise<void>;
 };
 
 function json(body: unknown, status: number): Response {
@@ -119,6 +133,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
   if (gate.block === "cap") {
     const message = capBlockMessage(gate.spentMicro, capMicroUsd);
     await append(text, message);
+    await rememberStatement(resolveMemoryIo(input), text, now, apiKey);
     return json(
       {
         error: message,
@@ -146,10 +161,29 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
 
   const state = await (input.loadLedger ?? loadAssistantState)();
   const snapshot = buildStateSnapshot(state, now);
-  const messages: ModelMessage[] = buildModelMessages(state.chatMessages, snapshot, text);
-  const system = cachedSystemPrompt();
-  const tools = cachedAssistantTools();
-  const executeTool = input.executeTool ?? executeReadTool;
+  const memoryIo = resolveMemoryIo(input);
+  let loadedMemory = emptyMemory();
+  try {
+    loadedMemory = await memoryIo.load();
+  } catch (error) {
+    logSafeError(error, apiKey);
+  }
+  const memoryBaseline = JSON.stringify(loadedMemory);
+  let memory = foldConversationSummary(loadedMemory, state.chatMessages);
+  const stated = factFromStatement(text, state);
+  if (stated) memory = rememberFact(memory, stated, now.toISOString());
+  const system = cachedSystemPrompt(memory.facts.map((fact) => fact.text));
+  const messages: ModelMessage[] = buildModelMessages(state.chatMessages, snapshot, text, memory.summary);
+  const tools = withMemoryTools(cachedAssistantTools());
+  const readTool = input.executeTool ?? executeReadTool;
+  const executeTool = (ledger: AppState, name: string, toolInput: unknown, at: Date): ToolOutcome => {
+    if (isMemoryTool(name)) {
+      const applied = applyMemoryTool(memory, name, toolInput, now.toISOString());
+      memory = applied.memory;
+      return applied.outcome;
+    }
+    return readTool(ledger, name, toolInput, at);
+  };
 
   const encoder = new TextEncoder();
   const body = new ReadableStream({
@@ -160,6 +194,21 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
       let reply = "";
       let latest = gated;
       let citations: ChatCitation[] = [];
+      const commitMemory = async () => {
+        const stamp = new Date().toISOString();
+        const projected: ChatMessage[] = [
+          ...state.chatMessages,
+          { id: `pending-user-${stamp}`, role: "user", text, createdAt: stamp },
+          { id: `pending-dolla-${stamp}`, role: "dolla", text: reply, createdAt: stamp },
+        ];
+        memory = foldConversationSummary(memory, projected);
+        if (JSON.stringify(memory) === memoryBaseline) return;
+        try {
+          await memoryIo.save(memory);
+        } catch (error) {
+          logSafeError(error, apiKey);
+        }
+      };
       try {
         await runToolLoop({
           messages,
@@ -249,6 +298,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
           });
         }
       } finally {
+        await commitMemory();
         controller.close();
       }
     },
@@ -261,6 +311,43 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+function resolveMemoryIo(input: HandleInput): {
+  load: () => Promise<AssistantMemory>;
+  save: (memory: AssistantMemory) => Promise<void>;
+} {
+  if (input.loadMemory || input.saveMemory) {
+    return {
+      load: input.loadMemory ?? (async () => emptyMemory()),
+      save: input.saveMemory ?? (async () => undefined),
+    };
+  }
+  if (input.appendExchange) {
+    return {
+      load: async () => emptyMemory(),
+      save: async () => undefined,
+    };
+  }
+  return { load: readAssistantMemory, save: persistAssistantMemory };
+}
+
+async function rememberStatement(
+  memoryIo: { load: () => Promise<AssistantMemory>; save: (memory: AssistantMemory) => Promise<void> },
+  text: string,
+  now: Date,
+  apiKey: string
+) {
+  const fact = factFromStatement(text);
+  if (!fact) return;
+  try {
+    const current = await memoryIo.load();
+    const next = rememberFact(current, fact, now.toISOString());
+    if (next === current) return;
+    await memoryIo.save(next);
+  } catch (error) {
+    logSafeError(error, apiKey);
+  }
 }
 
 async function loadAssistantState(): Promise<AppState> {

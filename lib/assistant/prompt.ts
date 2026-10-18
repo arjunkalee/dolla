@@ -47,11 +47,40 @@ export type CachedSystemBlock = {
   cache_control: { type: "ephemeral" };
 };
 
-export function cachedSystemPrompt(): CachedSystemBlock[] {
+const MEMORY_PREFACE = `Remembered preferences are short facts Arjun stated, such as when he gets paid. They are not balances, bills, or transactions. Never quote a dollar amount from this list or from an earlier-conversation summary. Call a ledger tool for any number. When he states a new short preference or fact, call remember_fact with that wording and no dollar amount, PIN, or API key. When he asks you to forget one, call forget_fact.`;
+
+function visibleFacts(facts: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const fact of facts) {
+    const text = fact.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!text || text.length > 160) continue;
+    if (/\$|sk-ant-|\bpin\b|api[_ -]?key/i.test(text)) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(text);
+    if (lines.length >= 24) break;
+  }
+  return lines;
+}
+
+/**
+ * The standing prompt stays the first cached block. Preferences are a second
+ * cached block so a new fact does not rewrite the long prefix.
+ */
+export function cachedSystemPrompt(facts: readonly string[] = []): CachedSystemBlock[] {
+  const lines = visibleFacts(facts);
+  const text = lines.length ? `${MEMORY_PREFACE}\n\n${lines.map((line) => `- ${line}`).join("\n")}` : MEMORY_PREFACE;
   return [
     {
       type: "text",
       text: ASSISTANT_SYSTEM_PROMPT,
+      cache_control: { type: "ephemeral" },
+    },
+    {
+      type: "text",
+      text,
       cache_control: { type: "ephemeral" },
     },
   ];

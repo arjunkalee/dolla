@@ -323,7 +323,10 @@ async function main() {
   );
   expect(
     "history was trimmed",
-    call.messages.every((turn) => typeof turn.content !== "string" || !turn.content.includes("user-0"))
+    call.messages.every((turn, index) => {
+      if (typeof turn.content !== "string" || !turn.content.includes("user-0")) return true;
+      return index === call.messages.length - 1 && turn.content.includes("Earlier conversation");
+    })
   );
   expectEq("last tool is cached", call.tools.at(-1)?.cache_control?.type, "ephemeral");
   expect(
