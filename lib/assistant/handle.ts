@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { sessionValid } from "@/lib/auth";
 import { markBillsPastDuePaid, nowISO } from "@/lib/freshness";
 import { loadState, saveState, updateState } from "@/lib/store";
-import type { AppState, ChatMessage, ChatProposal } from "@/lib/types";
+import type { AppState, ChatCitation, ChatMessage, ChatProposal } from "@/lib/types";
 import { todayISO } from "@/lib/dates";
 import { streamAssistant, type AssistantStreamArgs } from "./anthropic";
 import { runToolLoop, type AssistantRound } from "./loop";
@@ -24,8 +24,19 @@ import {
   monthlyCapMicroUsd,
   type AiUsageLedger,
 } from "./usage";
+import {
+  isWebSearchRequestError,
+  sanitizeCitations,
+  searchFailureNote,
+  WEB_SEARCH_UNAVAILABLE_MESSAGE,
+} from "./web-search";
 
 const MAX_USER_CHARS = 4_000;
+
+export type AssistantExchange = {
+  proposals?: ChatProposal[];
+  citations?: ChatCitation[];
+};
 
 export type AssistantStreamCall = AssistantStreamArgs & {
   maxTokens: number;
@@ -42,7 +53,7 @@ type HandleInput = {
   signal?: AbortSignal;
   loadLedger?: () => Promise<AppState>;
   mutateUsage?: (mutator: (ledger: AiUsageLedger) => AiUsageLedger) => Promise<AiUsageLedger>;
-  appendExchange?: (userText: string, reply: string, proposals?: ChatProposal[]) => Promise<void>;
+  appendExchange?: (userText: string, reply: string, exchange?: AssistantExchange) => Promise<void>;
   streamReply?: (args: AssistantStreamCall) => Promise<AssistantRound>;
   executeTool?: (state: AppState, name: string, input: unknown, now: Date) => ToolOutcome;
 };
@@ -154,6 +165,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
       let reply = "";
       let latest = gated;
       const proposals: ChatProposal[] = [];
+      let citations: ChatCitation[] = [];
       try {
         await runToolLoop({
           messages,
@@ -202,12 +214,17 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
               send({ type: "proposal", proposal: event.proposal });
               return;
             }
+            if (event.type === "citations") {
+              citations = event.citations;
+              send({ type: "citations", citations: event.citations });
+              return;
+            }
             reply += event.text;
             send({ type: "delta", text: event.text });
           },
         });
         const saved = reply.trim() || "I don't have a reply for that.";
-        await append(text, saved, proposals.map(pendingProposal));
+        await append(text, saved, exchangeOf(proposals, citations));
         const monthCost = latest.months[month]?.costMicroUsd ?? 0;
         send({
           type: "done",
@@ -216,11 +233,32 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
           monthKey: month,
         });
       } catch (error) {
-        logSafeError(error);
-        send({
-          type: "error",
-          message: "The assistant could not answer. Try again in a moment.",
-        });
+        logSafeError(error, apiKey);
+        if (isWebSearchRequestError(error)) {
+          const note = searchFailureNote(reply);
+          if (note) {
+            reply += note;
+            send({ type: "delta", text: note });
+          }
+          const saved = reply.trim() || WEB_SEARCH_UNAVAILABLE_MESSAGE;
+          try {
+            await append(text, saved, exchangeOf(proposals, citations));
+          } catch (persistError) {
+            logSafeError(persistError, apiKey);
+          }
+          const monthCost = latest.months[month]?.costMicroUsd ?? 0;
+          send({
+            type: "done",
+            monthSpendUsd: microUsdToNumber(monthCost),
+            capUsd: microUsdToNumber(capMicroUsd),
+            monthKey: month,
+          });
+        } else {
+          send({
+            type: "error",
+            message: "The assistant could not answer. Try again in a moment.",
+          });
+        }
       } finally {
         controller.close();
       }
@@ -251,8 +289,21 @@ function pendingProposal(proposal: ChatProposal): ChatProposal {
   };
 }
 
-async function persistExchange(userText: string, reply: string, proposals: ChatProposal[] = []): Promise<void> {
+function exchangeOf(proposals: ChatProposal[], citations: ChatCitation[]): AssistantExchange {
+  return {
+    proposals: proposals.map(pendingProposal),
+    citations,
+  };
+}
+
+async function persistExchange(
+  userText: string,
+  reply: string,
+  exchange?: AssistantExchange
+): Promise<void> {
   const stamp = new Date().toISOString();
+  const proposals = (exchange?.proposals ?? []).map(pendingProposal);
+  const safeCitations = sanitizeCitations(exchange?.citations);
   await updateState((state) => {
     const user: ChatMessage = { id: nanoid(), role: "user", text: userText, createdAt: stamp };
     const dolla: ChatMessage = {
@@ -260,7 +311,8 @@ async function persistExchange(userText: string, reply: string, proposals: ChatP
       role: "dolla",
       text: reply,
       createdAt: stamp,
-      proposals: proposals.length ? proposals.map(pendingProposal) : undefined,
+      ...(proposals.length > 0 ? { proposals } : {}),
+      ...(safeCitations.length > 0 ? { citations: safeCitations } : {}),
     };
     return {
       ...state,
@@ -291,6 +343,7 @@ function logUsage(entry: {
       cacheCreation5mTokens: entry.usage.cacheCreation5mTokens,
       cacheCreation1hTokens: entry.usage.cacheCreation1hTokens,
       cacheReadTokens: entry.usage.cacheReadTokens,
+      webSearchRequests: entry.usage.webSearchRequests ?? 0,
       requestCostMicroUsd: entry.requestCost,
       monthCostMicroUsd: entry.monthCost,
       capMicroUsd: entry.capMicroUsd,
@@ -298,8 +351,10 @@ function logUsage(entry: {
   );
 }
 
-function logSafeError(error: unknown) {
+function logSafeError(error: unknown, secret?: string) {
   const raw = error instanceof Error ? error.message : "unknown";
-  const redacted = raw.replace(/sk-ant-[A-Za-z0-9_-]+/g, "[redacted]");
+  let redacted = raw.replace(/sk-ant-[A-Za-z0-9_-]+/g, "[redacted]");
+  if (secret && secret.length >= 8) redacted = redacted.split(secret).join("[redacted]");
+  redacted = redacted.replace(/\bpin\b(\s*[:=]\s*|\s+)['"]?\d{4,8}\b/gi, "pin [redacted]");
   console.error("dolla.assistant.error", redacted);
 }

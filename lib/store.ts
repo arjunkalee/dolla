@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createClient, type Client } from "@libsql/client";
 import { Redis } from "@upstash/redis";
+import { sanitizeCitations } from "./assistant/web-search";
 import type { AppState, AssistantAuditEntry, ChatMessage, ChatProposal, StoreInfo } from "./types";
 import { STATE_VERSION } from "./types";
 import { defaultSplitAllocations, realState } from "./seed";
@@ -273,13 +274,13 @@ function normalizeProposals(value: unknown): ChatProposal[] | undefined {
 
 function normalizeMessage(message: ChatMessage): ChatMessage {
   const proposals = normalizeProposals(message.proposals);
-  if (!proposals) {
-    if (!message.proposals) return message;
-    const rest = { ...message };
-    delete rest.proposals;
-    return rest;
-  }
-  return { ...message, proposals };
+  const citations = sanitizeCitations(message.citations);
+  const next: ChatMessage = { ...message };
+  if (proposals) next.proposals = proposals;
+  else delete next.proposals;
+  if (citations.length > 0) next.citations = citations;
+  else delete next.citations;
+  return next;
 }
 
 function normalize(state: AppState): AppState {

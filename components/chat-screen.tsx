@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { sanitizeCitations } from "@/lib/assistant/web-search";
 import { parseChat } from "@/lib/chat";
-import type { ChatProposal } from "@/lib/types";
+import type { ChatCitation, ChatProposal } from "@/lib/types";
+import { CitationLinks } from "./citation-links";
 import { useDolla } from "./dolla-provider";
 import { ProposalCard } from "./proposal-card";
 
@@ -27,6 +29,7 @@ export function ChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
+  const [liveCitations, setLiveCitations] = useState<ChatCitation[]>([]);
   const [spend, setSpend] = useState<Spend | null>(null);
   const [cardNotice, setCardNotice] = useState<{ id: string; message: string } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -34,7 +37,7 @@ export function ChatScreen() {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [state?.chatMessages.length, proposalCount, draft?.reply, draft?.proposals.length, busy]);
+  }, [state?.chatMessages.length, proposalCount, draft?.reply, draft?.proposals.length, liveCitations.length, busy]);
 
   useEffect(() => {
     let cancel = false;
@@ -133,6 +136,7 @@ export function ChatScreen() {
   async function askAssistant(value: string) {
     setLookingUp(false);
     setCardNotice(null);
+    setLiveCitations([]);
     setDraft({ user: value, reply: "", done: false, proposals: [] });
     const res = await fetch("/api/assistant", {
       method: "POST",
@@ -182,10 +186,12 @@ export function ChatScreen() {
           monthSpendUsd?: number;
           capUsd?: number;
           proposal?: ChatProposal;
+          citations?: ChatCitation[];
         };
         if (event.type === "reset") {
           reply = "";
           proposals.length = 0;
+          setLiveCitations([]);
           setLookingUp(true);
           setDraft({ user: value, reply: "", done: false, proposals: [] });
         } else if (event.type === "proposal" && event.proposal?.id) {
@@ -194,6 +200,8 @@ export function ChatScreen() {
           }
           setLookingUp(false);
           setDraft({ user: value, reply, done: false, proposals: [...proposals] });
+        } else if (event.type === "citations") {
+          setLiveCitations(sanitizeCitations(event.citations));
         } else if (event.type === "status" && event.status === "looking_up") {
           setLookingUp(true);
         } else if (event.type === "delta" && event.text) {
@@ -256,7 +264,7 @@ export function ChatScreen() {
         )}
         {state.chatMessages.map((message) => (
           <div key={message.id} className="space-y-2">
-            <Bubble role={message.role} text={message.text} />
+            <Bubble role={message.role} text={message.text} citations={message.citations} />
             {message.proposals?.map((proposal) => (
               <ProposalCard
                 key={proposal.id}
@@ -279,6 +287,7 @@ export function ChatScreen() {
                 role="dolla"
                 text={draft.reply || (lookingUp ? "looking up…" : "…")}
                 pending={!draft.reply}
+                citations={liveCitations}
               />
             )}
             {draft.proposals.map((proposal) => (
@@ -334,20 +343,33 @@ function Bubble({
   role,
   text,
   pending = false,
+  citations,
 }: {
   role: "user" | "dolla";
   text: string;
   pending?: boolean;
+  citations?: ChatCitation[];
 }) {
   return (
     <article
       className={
         role === "user"
           ? "ml-8 rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground"
-          : "mr-4 whitespace-pre-wrap rounded-2xl bg-card px-4 py-3 text-sm leading-relaxed ring-1 ring-foreground/10"
+          : "mr-4 rounded-2xl bg-card px-4 py-3 text-sm leading-relaxed ring-1 ring-foreground/10"
       }
     >
-      <span className={pending ? "text-muted-foreground" : undefined}>{text}</span>
+      <span
+        className={
+          role === "dolla"
+            ? pending
+              ? "whitespace-pre-wrap text-muted-foreground"
+              : "whitespace-pre-wrap"
+            : undefined
+        }
+      >
+        {text}
+      </span>
+      {role === "dolla" && !pending && <CitationLinks citations={citations} />}
     </article>
   );
 }

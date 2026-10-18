@@ -1,7 +1,8 @@
-import type { ChatProposal } from "@/lib/types";
+import type { ChatCitation, ChatProposal } from "@/lib/types";
 import type { ModelMessage } from "./messages";
 import type { TokenUsage } from "./pricing";
 import type { ToolOutcome } from "./tools";
+import { sanitizeCitations, searchFailureNote } from "./web-search";
 
 export const MAX_TOOL_ROUNDS = 6;
 
@@ -20,13 +21,17 @@ export type AssistantRound = TokenUsage & {
   /** Full assistant content to send back, including thinking blocks when the API returns them. */
   assistantContent?: unknown;
   toolUses?: ToolUseCall[];
+  citations?: ChatCitation[];
+  /** True when this round's web searches all failed and left nothing to cite. */
+  searchFailed?: boolean;
 };
 
 export type LoopEvent =
   | { type: "text"; text: string }
   | { type: "reset" }
   | { type: "looking_up" }
-  | { type: "proposal"; proposal: ChatProposal };
+  | { type: "proposal"; proposal: ChatProposal }
+  | { type: "citations"; citations: ChatCitation[] };
 
 export type ToolLoopResult = {
   stop: "done" | "cap" | "limit";
@@ -63,6 +68,32 @@ export async function runToolLoop(input: {
   const maxRounds = input.maxRounds ?? MAX_TOOL_ROUNDS;
   const messages = input.messages;
   let visible = "";
+  const citations: ChatCitation[] = [];
+  let searchFailed = false;
+
+  const absorb = (result: AssistantRound) => {
+    const found = sanitizeCitations(result.citations);
+    if (found.length > 0) {
+      for (const citation of found) {
+        if (!citations.some((item) => item.url === citation.url)) citations.push(citation);
+      }
+      searchFailed = false;
+    } else if (result.searchFailed) {
+      searchFailed = true;
+    }
+  };
+
+  const finish = (stop: ToolLoopResult["stop"], withSearchNote: boolean): ToolLoopResult => {
+    if (withSearchNote && searchFailed) {
+      const note = searchFailureNote(visible);
+      if (note) {
+        visible += note;
+        input.emit({ type: "text", text: note });
+      }
+    }
+    if (citations.length > 0) input.emit({ type: "citations", citations: [...citations] });
+    return { stop };
+  };
 
   for (let round = 1; round <= maxRounds; round++) {
     const spent = await input.readSpend();
@@ -71,7 +102,7 @@ export async function runToolLoop(input: {
       const extra = visible.trim() ? `\n\n${message}` : message;
       visible += extra;
       input.emit({ type: "text", text: extra });
-      return { stop: "cap" };
+      return finish("cap", false);
     }
 
     let announced = false;
@@ -91,9 +122,21 @@ export async function runToolLoop(input: {
     });
 
     await input.recordUsage(result);
+    absorb(result);
 
     const toolUses = result.toolUses ?? [];
-    if (toolUses.length === 0) return { stop: "done" };
+    if (toolUses.length === 0) {
+      // A paused server-side search continues by sending the assistant blocks back unchanged.
+      if (
+        result.stopReason === "pause_turn" &&
+        round < maxRounds &&
+        Array.isArray(result.assistantContent)
+      ) {
+        messages.push({ role: "assistant", content: result.assistantContent });
+        continue;
+      }
+      return finish("done", true);
+    }
     if (!announced) {
       announced = true;
       visible = "";
@@ -105,7 +148,7 @@ export async function runToolLoop(input: {
         visible = TOOL_LOOP_LIMIT_MESSAGE;
         input.emit({ type: "text", text: TOOL_LOOP_LIMIT_MESSAGE });
       }
-      return { stop: "limit" };
+      return finish("limit", true);
     }
 
     const assistantContent = Array.isArray(result.assistantContent)
@@ -122,7 +165,7 @@ export async function runToolLoop(input: {
     });
   }
 
-  return { stop: "limit" };
+  return finish("limit", true);
 }
 
 function toolResultFor(

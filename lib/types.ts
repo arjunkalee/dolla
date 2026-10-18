@@ -151,12 +151,19 @@ export type AssistantAuditEntry = {
   undoneAt?: string;
 };
 
+/** A source link from web search. Titles and https URLs only — no page text. */
+export type ChatCitation = {
+  url: string;
+  title: string;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "dolla";
   text: string;
   createdAt: string;
   proposals?: ChatProposal[];
+  citations?: ChatCitation[];
 };
 
 export type FormulaRow = {

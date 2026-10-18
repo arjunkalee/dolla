@@ -399,7 +399,8 @@ async function main() {
     env: { ANTHROPIC_API_KEY: FAKE_KEY, DOLLA_AI_MONTHLY_CAP_USD: "10" },
     loadLedger: async () => streamBox.box.state,
     mutateUsage: async (mutator) => mutator({ months: {}, recentRequestAt: [] }),
-    appendExchange: async (_user, reply, proposals = []) => {
+    appendExchange: async (_user, reply, exchange) => {
+      const proposals = exchange?.proposals ?? [];
       streamedProposals = proposals;
       streamBox.box.state = {
         ...streamBox.box.state,
