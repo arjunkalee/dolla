@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { sanitizeCitations } from "@/lib/assistant/web-search";
 import { parseChat } from "@/lib/chat";
+import type { ChatCitation } from "@/lib/types";
+import { CitationLinks } from "./citation-links";
 import { useDolla } from "./dolla-provider";
 
 type Spend = {
@@ -24,6 +27,7 @@ export function ChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
+  const [liveCitations, setLiveCitations] = useState<ChatCitation[]>([]);
   const [spend, setSpend] = useState<Spend | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -84,6 +88,7 @@ export function ChatScreen() {
 
   async function askAssistant(value: string) {
     setLookingUp(false);
+    setLiveCitations([]);
     setDraft({ user: value, reply: "", done: false });
     const res = await fetch("/api/assistant", {
       method: "POST",
@@ -131,11 +136,15 @@ export function ChatScreen() {
           status?: string;
           monthSpendUsd?: number;
           capUsd?: number;
+          citations?: ChatCitation[];
         };
         if (event.type === "reset") {
           reply = "";
+          setLiveCitations([]);
           setLookingUp(true);
           setDraft({ user: value, reply: "", done: false });
+        } else if (event.type === "citations") {
+          setLiveCitations(sanitizeCitations(event.citations));
         } else if (event.type === "status" && event.status === "looking_up") {
           setLookingUp(true);
         } else if (event.type === "delta" && event.text) {
@@ -182,7 +191,7 @@ export function ChatScreen() {
           </div>
         )}
         {state.chatMessages.map((message) => (
-          <Bubble key={message.id} role={message.role} text={message.text} />
+          <Bubble key={message.id} role={message.role} text={message.text} citations={message.citations} />
         ))}
         {draft && !storedReply && (
           <>
@@ -192,6 +201,7 @@ export function ChatScreen() {
                 role="dolla"
                 text={draft.reply || (lookingUp ? "looking up…" : "…")}
                 pending={!draft.reply}
+                citations={liveCitations}
               />
             )}
           </>
@@ -235,20 +245,33 @@ function Bubble({
   role,
   text,
   pending = false,
+  citations,
 }: {
   role: "user" | "dolla";
   text: string;
   pending?: boolean;
+  citations?: ChatCitation[];
 }) {
   return (
     <article
       className={
         role === "user"
           ? "ml-8 rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground"
-          : "mr-4 whitespace-pre-wrap rounded-2xl bg-card px-4 py-3 text-sm leading-relaxed ring-1 ring-foreground/10"
+          : "mr-4 rounded-2xl bg-card px-4 py-3 text-sm leading-relaxed ring-1 ring-foreground/10"
       }
     >
-      <span className={pending ? "text-muted-foreground" : undefined}>{text}</span>
+      <span
+        className={
+          role === "dolla"
+            ? pending
+              ? "whitespace-pre-wrap text-muted-foreground"
+              : "whitespace-pre-wrap"
+            : undefined
+        }
+      >
+        {text}
+      </span>
+      {role === "dolla" && !pending && <CitationLinks citations={citations} />}
     </article>
   );
 }
