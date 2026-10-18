@@ -242,7 +242,14 @@ async function main() {
     /call the matching tool before you answer/i.test(ASSISTANT_SYSTEM_PROMPT)
   );
   expect("prompt does not quote the context block", /Do not quote a dollar amount from the context block/.test(ASSISTANT_SYSTEM_PROMPT));
-  expect("prompt refuses edits", /can.?t make edits yet/i.test(ASSISTANT_SYSTEM_PROMPT));
+  expect(
+    "prompt waits for a confirm card",
+    /nothing changes until he confirms/i.test(ASSISTANT_SYSTEM_PROMPT)
+  );
+  expect(
+    "prompt logs a restaurant charge instead of resizing the envelope",
+    /\$10 for restaurant/.test(ASSISTANT_SYSTEM_PROMPT) && /do not resize the envelope/i.test(ASSISTANT_SYSTEM_PROMPT)
+  );
   expect("prompt explains invest leftover", /take-home minus the sum of the envelopes/i.test(ASSISTANT_SYSTEM_PROMPT));
   expect("prompt explains past-due", /treated as paid/i.test(ASSISTANT_SYSTEM_PROMPT));
   expect("prompt keeps calendar calendar-only", /Calendar tab is calendar-only/i.test(ASSISTANT_SYSTEM_PROMPT));

@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { sessionValid } from "@/lib/auth";
 import { markBillsPastDuePaid, nowISO } from "@/lib/freshness";
 import { loadState, saveState, updateState } from "@/lib/store";
-import type { AppState, ChatMessage } from "@/lib/types";
+import type { AppState, ChatMessage, ChatProposal } from "@/lib/types";
 import { todayISO } from "@/lib/dates";
 import { streamAssistant, type AssistantStreamArgs } from "./anthropic";
 import { runToolLoop, type AssistantRound } from "./loop";
@@ -11,7 +11,7 @@ import { MAX_OUTPUT_TOKENS, resolveAssistantModel } from "./models";
 import { cachedSystemPrompt } from "./prompt";
 import { costMicroUsd, microUsdToNumber, priceForModel, type TokenUsage } from "./pricing";
 import { buildStateSnapshot } from "./snapshot";
-import { cachedAssistantTools, executeReadTool, type AssistantTool, type ToolOutcome } from "./tools";
+import { cachedAssistantTools, executeAssistantTool, type AssistantTool, type ToolOutcome } from "./tools";
 import {
   addRequestUsage,
   capBlockMessage,
@@ -42,7 +42,7 @@ type HandleInput = {
   signal?: AbortSignal;
   loadLedger?: () => Promise<AppState>;
   mutateUsage?: (mutator: (ledger: AiUsageLedger) => AiUsageLedger) => Promise<AiUsageLedger>;
-  appendExchange?: (userText: string, reply: string) => Promise<void>;
+  appendExchange?: (userText: string, reply: string, proposals?: ChatProposal[]) => Promise<void>;
   streamReply?: (args: AssistantStreamCall) => Promise<AssistantRound>;
   executeTool?: (state: AppState, name: string, input: unknown, now: Date) => ToolOutcome;
 };
@@ -143,7 +143,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
   const messages: ModelMessage[] = buildModelMessages(state.chatMessages, snapshot, text);
   const system = cachedSystemPrompt();
   const tools = cachedAssistantTools();
-  const executeTool = input.executeTool ?? executeReadTool;
+  const executeTool = input.executeTool ?? executeAssistantTool;
 
   const encoder = new TextEncoder();
   const body = new ReadableStream({
@@ -153,6 +153,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
       };
       let reply = "";
       let latest = gated;
+      const proposals: ChatProposal[] = [];
       try {
         await runToolLoop({
           messages,
@@ -196,12 +197,17 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
               send({ type: "status", status: "looking_up" });
               return;
             }
+            if (event.type === "proposal") {
+              proposals.push(event.proposal);
+              send({ type: "proposal", proposal: event.proposal });
+              return;
+            }
             reply += event.text;
             send({ type: "delta", text: event.text });
           },
         });
         const saved = reply.trim() || "I don't have a reply for that.";
-        await append(text, saved);
+        await append(text, saved, proposals.map(pendingProposal));
         const monthCost = latest.months[month]?.costMicroUsd ?? 0;
         send({
           type: "done",
@@ -236,11 +242,26 @@ async function loadAssistantState(): Promise<AppState> {
   return settled.changed ? saveState(settled.state) : loaded;
 }
 
-async function persistExchange(userText: string, reply: string): Promise<void> {
+function pendingProposal(proposal: ChatProposal): ChatProposal {
+  return {
+    ...proposal,
+    status: "pending",
+    auditId: undefined,
+    changes: proposal.changes.map((change) => ({ ...change })),
+  };
+}
+
+async function persistExchange(userText: string, reply: string, proposals: ChatProposal[] = []): Promise<void> {
   const stamp = new Date().toISOString();
   await updateState((state) => {
     const user: ChatMessage = { id: nanoid(), role: "user", text: userText, createdAt: stamp };
-    const dolla: ChatMessage = { id: nanoid(), role: "dolla", text: reply, createdAt: stamp };
+    const dolla: ChatMessage = {
+      id: nanoid(),
+      role: "dolla",
+      text: reply,
+      createdAt: stamp,
+      proposals: proposals.length ? proposals.map(pendingProposal) : undefined,
+    };
     return {
       ...state,
       chatMessages: [...state.chatMessages, user, dolla].slice(-40),

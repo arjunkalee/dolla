@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { parseChat } from "@/lib/chat";
+import type { ChatProposal } from "@/lib/types";
 import { useDolla } from "./dolla-provider";
+import { ProposalCard } from "./proposal-card";
 
 type Spend = {
   monthSpendUsd: number;
@@ -15,6 +17,7 @@ type Draft = {
   user: string;
   reply: string;
   done: boolean;
+  proposals: ChatProposal[];
 };
 
 export function ChatScreen() {
@@ -25,11 +28,13 @@ export function ChatScreen() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
   const [spend, setSpend] = useState<Spend | null>(null);
+  const [cardNotice, setCardNotice] = useState<{ id: string; message: string } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const proposalCount = state?.chatMessages.reduce((sum, message) => sum + (message.proposals?.length ?? 0), 0) ?? 0;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [state?.chatMessages.length, draft?.reply, busy]);
+  }, [state?.chatMessages.length, proposalCount, draft?.reply, draft?.proposals.length, busy]);
 
   useEffect(() => {
     let cancel = false;
@@ -82,9 +87,53 @@ export function ChatScreen() {
     }
   }
 
+  async function postCard(path: string, body: Record<string, unknown>, noticeId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        setCardNotice({ id: noticeId, message: data?.error || "Could not update that." });
+      } else {
+        setCardNotice(null);
+      }
+      await refresh();
+    } catch (err) {
+      setCardNotice({
+        id: noticeId,
+        message: err instanceof Error ? err.message : "Could not update that.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function confirmProposal(proposalId: string) {
+    return postCard("/api/assistant/apply", { proposalId }, proposalId);
+  }
+
+  function cancelProposal(proposalId: string) {
+    return postCard("/api/assistant/cancel", { proposalId }, proposalId);
+  }
+
+  function undoProposal(proposalId: string, auditId: string) {
+    return postCard("/api/assistant/undo", { auditId }, proposalId);
+  }
+
+  function undoLatest() {
+    const latest = state?.assistantAudit?.[state.assistantAudit.length - 1];
+    return postCard("/api/assistant/undo", {}, latest?.id ?? "latest");
+  }
+
   async function askAssistant(value: string) {
     setLookingUp(false);
-    setDraft({ user: value, reply: "", done: false });
+    setCardNotice(null);
+    setDraft({ user: value, reply: "", done: false, proposals: [] });
     const res = await fetch("/api/assistant", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,7 +152,7 @@ export function ChatScreen() {
         if (typeof data.monthSpendUsd === "number" && typeof data.capUsd === "number") {
           setSpend({ monthSpendUsd: data.monthSpendUsd, capUsd: data.capUsd });
         }
-        setDraft({ user: value, reply: data.message, done: true });
+        setDraft({ user: value, reply: data.message, done: true, proposals: [] });
         await refresh();
         return;
       }
@@ -115,6 +164,7 @@ export function ChatScreen() {
     const decoder = new TextDecoder();
     let buffer = "";
     let reply = "";
+    const proposals: ChatProposal[] = [];
     while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
@@ -131,17 +181,25 @@ export function ChatScreen() {
           status?: string;
           monthSpendUsd?: number;
           capUsd?: number;
+          proposal?: ChatProposal;
         };
         if (event.type === "reset") {
           reply = "";
+          proposals.length = 0;
           setLookingUp(true);
-          setDraft({ user: value, reply: "", done: false });
+          setDraft({ user: value, reply: "", done: false, proposals: [] });
+        } else if (event.type === "proposal" && event.proposal?.id) {
+          if (!proposals.some((proposal) => proposal.id === event.proposal?.id)) {
+            proposals.push(event.proposal);
+          }
+          setLookingUp(false);
+          setDraft({ user: value, reply, done: false, proposals: [...proposals] });
         } else if (event.type === "status" && event.status === "looking_up") {
           setLookingUp(true);
         } else if (event.type === "delta" && event.text) {
           setLookingUp(false);
           reply += event.text;
-          setDraft({ user: value, reply, done: false });
+          setDraft({ user: value, reply, done: false, proposals: [...proposals] });
         } else if (event.type === "done") {
           setLookingUp(false);
           if (typeof event.monthSpendUsd === "number" && typeof event.capUsd === "number") {
@@ -149,7 +207,7 @@ export function ChatScreen() {
           }
         } else if (event.type === "error") {
           if (reply.trim()) {
-            setDraft({ user: value, reply: reply.trim(), done: true });
+            setDraft({ user: value, reply: reply.trim(), done: true, proposals: [...proposals] });
             setError(event.message || "The assistant could not answer.");
             return;
           }
@@ -158,18 +216,33 @@ export function ChatScreen() {
       }
     }
     const finalReply = reply.trim() || "I don't have a reply for that.";
-    setDraft({ user: value, reply: finalReply, done: true });
+    setDraft({ user: value, reply: finalReply, done: true, proposals: [...proposals] });
     await refresh();
   }
+
+  const latestAudit = state.assistantAudit?.[state.assistantAudit.length - 1];
 
   return (
     <div className="flex min-h-[calc(100dvh-8.5rem)] flex-col">
       <header className="mb-3">
         <h1 className="text-[1.75rem] font-semibold tracking-tight">Chat</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Ask about the budget, or edit with a command like “log $10 dining”. The assistant can’t change numbers yet.
+          Ask about the budget, or edit with a command like “log $10 dining”. Assistant edits wait for a confirm card.
         </p>
       </header>
+
+      {latestAudit && !latestAudit.undoneAt && (
+        <button
+          type="button"
+          className="mb-3 text-left text-xs text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
+          disabled={busy}
+          data-testid="undo-latest"
+          onClick={() => void undoLatest()}
+        >
+          Undo last assistant edit
+          {latestAudit.summary ? `: ${latestAudit.summary}` : ""}
+        </button>
+      )}
 
       <div className="flex-1 space-y-3" aria-live="polite">
         {state.chatMessages.length === 0 && !draft && (
@@ -182,7 +255,21 @@ export function ChatScreen() {
           </div>
         )}
         {state.chatMessages.map((message) => (
-          <Bubble key={message.id} role={message.role} text={message.text} />
+          <div key={message.id} className="space-y-2">
+            <Bubble role={message.role} text={message.text} />
+            {message.proposals?.map((proposal) => (
+              <ProposalCard
+                key={proposal.id}
+                proposal={proposal}
+                ready
+                busy={busy}
+                notice={cardNotice?.id === proposal.id ? cardNotice.message : null}
+                onConfirm={(id) => void confirmProposal(id)}
+                onCancel={(id) => void cancelProposal(id)}
+                onUndo={(id, auditId) => void undoProposal(id, auditId)}
+              />
+            ))}
+          </div>
         ))}
         {draft && !storedReply && (
           <>
@@ -194,6 +281,18 @@ export function ChatScreen() {
                 pending={!draft.reply}
               />
             )}
+            {draft.proposals.map((proposal) => (
+              <ProposalCard
+                key={proposal.id}
+                proposal={proposal}
+                ready={false}
+                busy={busy}
+                notice={null}
+                onConfirm={(id) => void confirmProposal(id)}
+                onCancel={(id) => void cancelProposal(id)}
+                onUndo={(id, auditId) => void undoProposal(id, auditId)}
+              />
+            ))}
           </>
         )}
         <div ref={endRef} />

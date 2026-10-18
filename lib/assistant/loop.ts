@@ -1,3 +1,4 @@
+import type { ChatProposal } from "@/lib/types";
 import type { ModelMessage } from "./messages";
 import type { TokenUsage } from "./pricing";
 import type { ToolOutcome } from "./tools";
@@ -24,7 +25,8 @@ export type AssistantRound = TokenUsage & {
 export type LoopEvent =
   | { type: "text"; text: string }
   | { type: "reset" }
-  | { type: "looking_up" };
+  | { type: "looking_up" }
+  | { type: "proposal"; proposal: ChatProposal };
 
 export type ToolLoopResult = {
   stop: "done" | "cap" | "limit";
@@ -109,10 +111,14 @@ export async function runToolLoop(input: {
     const assistantContent = Array.isArray(result.assistantContent)
       ? result.assistantContent
       : toolUses;
+    const results = toolUses.map((tool) => toolResultFor(tool, input.executeTool));
+    for (const resultBlock of results) {
+      if (resultBlock.proposal) input.emit({ type: "proposal", proposal: resultBlock.proposal });
+    }
     messages.push({ role: "assistant", content: assistantContent });
     messages.push({
       role: "user",
-      content: toolUses.map((tool) => toolResultFor(tool, input.executeTool)),
+      content: results.map((resultBlock) => resultBlock.block),
     });
   }
 
@@ -122,28 +128,35 @@ export async function runToolLoop(input: {
 function toolResultFor(
   tool: ToolUseCall,
   executeTool: (name: string, toolInput: unknown) => ToolOutcome
-): ToolResultBlock {
+): { block: ToolResultBlock; proposal?: ChatProposal } {
   try {
     const outcome = executeTool(tool.name, tool.input);
     if (!outcome.ok) {
       return {
-        type: "tool_result",
-        tool_use_id: tool.id,
-        is_error: true,
-        content: shortError(outcome.error),
+        block: {
+          type: "tool_result",
+          tool_use_id: tool.id,
+          is_error: true,
+          content: shortError(outcome.error),
+        },
       };
     }
     return {
-      type: "tool_result",
-      tool_use_id: tool.id,
-      content: JSON.stringify(outcome.data),
+      block: {
+        type: "tool_result",
+        tool_use_id: tool.id,
+        content: JSON.stringify(outcome.data),
+      },
+      proposal: outcome.proposal,
     };
   } catch {
     return {
-      type: "tool_result",
-      tool_use_id: tool.id,
-      is_error: true,
-      content: "That lookup failed.",
+      block: {
+        type: "tool_result",
+        tool_use_id: tool.id,
+        is_error: true,
+        content: "That lookup failed.",
+      },
     };
   }
 }
