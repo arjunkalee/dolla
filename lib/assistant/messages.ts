@@ -6,6 +6,12 @@ export type AssistantTurn = {
   content: string;
 };
 
+/** String turns, or assistant/tool blocks once a read-tool round is in progress. */
+export type ModelMessage = {
+  role: "user" | "assistant";
+  content: string | readonly unknown[];
+};
+
 export function trimHistory(messages: ChatMessage[], limit = HISTORY_LIMIT): AssistantTurn[] {
   const mapped: AssistantTurn[] = [];
   for (const message of messages.slice(-limit)) {

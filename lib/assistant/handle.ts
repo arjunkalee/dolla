@@ -5,11 +5,13 @@ import { loadState, saveState, updateState } from "@/lib/store";
 import type { AppState, ChatMessage } from "@/lib/types";
 import { todayISO } from "@/lib/dates";
 import { streamAssistant, type AssistantStreamArgs } from "./anthropic";
-import { buildModelMessages } from "./messages";
+import { runToolLoop, type AssistantRound } from "./loop";
+import { buildModelMessages, type ModelMessage } from "./messages";
 import { MAX_OUTPUT_TOKENS, resolveAssistantModel } from "./models";
 import { cachedSystemPrompt } from "./prompt";
 import { costMicroUsd, microUsdToNumber, priceForModel, type TokenUsage } from "./pricing";
 import { buildStateSnapshot } from "./snapshot";
+import { cachedAssistantTools, executeReadTool, type AssistantTool, type ToolOutcome } from "./tools";
 import {
   addRequestUsage,
   capBlockMessage,
@@ -28,6 +30,8 @@ const MAX_USER_CHARS = 4_000;
 export type AssistantStreamCall = AssistantStreamArgs & {
   maxTokens: number;
   system: ReturnType<typeof cachedSystemPrompt>;
+  tools: AssistantTool[];
+  messages: ModelMessage[];
 };
 
 type HandleInput = {
@@ -39,7 +43,8 @@ type HandleInput = {
   loadLedger?: () => Promise<AppState>;
   mutateUsage?: (mutator: (ledger: AiUsageLedger) => AiUsageLedger) => Promise<AiUsageLedger>;
   appendExchange?: (userText: string, reply: string) => Promise<void>;
-  streamReply?: (args: AssistantStreamCall) => Promise<TokenUsage>;
+  streamReply?: (args: AssistantStreamCall) => Promise<AssistantRound>;
+  executeTool?: (state: AppState, name: string, input: unknown, now: Date) => ToolOutcome;
 };
 
 function json(body: unknown, status: number): Response {
@@ -135,8 +140,10 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
 
   const state = await (input.loadLedger ?? loadAssistantState)();
   const snapshot = buildStateSnapshot(state, now);
-  const messages = buildModelMessages(state.chatMessages, snapshot, text);
+  const messages: ModelMessage[] = buildModelMessages(state.chatMessages, snapshot, text);
   const system = cachedSystemPrompt();
+  const tools = cachedAssistantTools();
+  const executeTool = input.executeTool ?? executeReadTool;
 
   const encoder = new TextEncoder();
   const body = new ReadableStream({
@@ -145,27 +152,57 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
       let reply = "";
+      let latest = gated;
       try {
-        const usage = await streamReply({
-          apiKey,
-          model,
-          maxTokens: MAX_OUTPUT_TOKENS,
-          system,
+        await runToolLoop({
           messages,
-          signal: input.signal,
-          onText: (delta) => {
-            reply += delta;
-            send({ type: "delta", text: delta });
+          capMicroUsd,
+          capReached,
+          capMessage: (spent) => capBlockMessage(spent, capMicroUsd),
+          readSpend: async () => {
+            const next = await mutate((ledger) => normalizeAiUsage(ledger));
+            latest = next;
+            return next.months[month]?.costMicroUsd ?? 0;
+          },
+          recordUsage: async (usage) => {
+            const requestCost = costMicroUsd(usage, priceForModel(model));
+            const updated = await mutate((ledger) =>
+              addRequestUsage(normalizeAiUsage(ledger), month, usage, requestCost)
+            );
+            latest = updated;
+            const monthCost = updated.months[month]?.costMicroUsd ?? requestCost;
+            logUsage({ model, month, usage, requestCost, monthCost, capMicroUsd });
+          },
+          streamRound: (roundMessages, hooks) =>
+            streamReply({
+              apiKey,
+              model,
+              maxTokens: MAX_OUTPUT_TOKENS,
+              system,
+              tools,
+              messages: roundMessages,
+              signal: input.signal,
+              onText: hooks.onText,
+              onToolUse: hooks.onToolUse,
+            }),
+          executeTool: (name, toolInput) => executeTool(state, name, toolInput, now),
+          emit: (event) => {
+            if (event.type === "reset") {
+              reply = "";
+              send({ type: "reset" });
+              return;
+            }
+            if (event.type === "looking_up") {
+              send({ type: "status", status: "looking_up" });
+              return;
+            }
+            reply += event.text;
+            send({ type: "delta", text: event.text });
           },
         });
-        const requestCost = costMicroUsd(usage, priceForModel(model));
-        const updated = await mutate((ledger) =>
-          addRequestUsage(normalizeAiUsage(ledger), month, usage, requestCost)
-        );
-        const monthCost = updated.months[month]?.costMicroUsd ?? requestCost;
-        logUsage({ model, month, usage, requestCost, monthCost, capMicroUsd });
         const saved = reply.trim() || "I don't have a reply for that.";
         await append(text, saved);
+        const monthCost = latest.months[month]?.costMicroUsd ?? 0;
         send({
           type: "done",
           monthSpendUsd: microUsdToNumber(monthCost),
@@ -211,7 +248,7 @@ async function persistExchange(userText: string, reply: string): Promise<void> {
   });
 }
 
-async function defaultStream(args: AssistantStreamCall): Promise<TokenUsage> {
+async function defaultStream(args: AssistantStreamCall): Promise<AssistantRound> {
   return streamAssistant(args);
 }
 

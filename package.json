@@ -17,7 +17,7 @@
     "test:split": "tsx scripts/verify-split-envelopes.ts",
     "test:pin": "tsx scripts/verify-pin.ts",
     "test:budget": "tsx scripts/verify-budget.ts",
-    "test:assistant": "tsx scripts/verify-assistant.ts"
+    "test:assistant": "tsx scripts/verify-assistant.ts && tsx scripts/verify-assistant-tools.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
