@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { sessionValid } from "@/lib/auth";
 import { markBillsPastDuePaid, nowISO } from "@/lib/freshness";
 import { loadState, saveState, updateState } from "@/lib/store";
-import type { AppState, ChatMessage } from "@/lib/types";
+import type { AppState, ChatCitation, ChatMessage } from "@/lib/types";
 import { todayISO } from "@/lib/dates";
 import { streamAssistant, type AssistantStreamArgs } from "./anthropic";
 import { runToolLoop, type AssistantRound } from "./loop";
@@ -24,6 +24,12 @@ import {
   monthlyCapMicroUsd,
   type AiUsageLedger,
 } from "./usage";
+import {
+  isWebSearchRequestError,
+  sanitizeCitations,
+  searchFailureNote,
+  WEB_SEARCH_UNAVAILABLE_MESSAGE,
+} from "./web-search";
 
 const MAX_USER_CHARS = 4_000;
 
@@ -42,7 +48,7 @@ type HandleInput = {
   signal?: AbortSignal;
   loadLedger?: () => Promise<AppState>;
   mutateUsage?: (mutator: (ledger: AiUsageLedger) => AiUsageLedger) => Promise<AiUsageLedger>;
-  appendExchange?: (userText: string, reply: string) => Promise<void>;
+  appendExchange?: (userText: string, reply: string, citations?: ChatCitation[]) => Promise<void>;
   streamReply?: (args: AssistantStreamCall) => Promise<AssistantRound>;
   executeTool?: (state: AppState, name: string, input: unknown, now: Date) => ToolOutcome;
 };
@@ -153,6 +159,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
       };
       let reply = "";
       let latest = gated;
+      let citations: ChatCitation[] = [];
       try {
         await runToolLoop({
           messages,
@@ -196,12 +203,17 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
               send({ type: "status", status: "looking_up" });
               return;
             }
+            if (event.type === "citations") {
+              citations = event.citations;
+              send({ type: "citations", citations: event.citations });
+              return;
+            }
             reply += event.text;
             send({ type: "delta", text: event.text });
           },
         });
         const saved = reply.trim() || "I don't have a reply for that.";
-        await append(text, saved);
+        await append(text, saved, citations);
         const monthCost = latest.months[month]?.costMicroUsd ?? 0;
         send({
           type: "done",
@@ -210,11 +222,32 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
           monthKey: month,
         });
       } catch (error) {
-        logSafeError(error);
-        send({
-          type: "error",
-          message: "The assistant could not answer. Try again in a moment.",
-        });
+        logSafeError(error, apiKey);
+        if (isWebSearchRequestError(error)) {
+          const note = searchFailureNote(reply);
+          if (note) {
+            reply += note;
+            send({ type: "delta", text: note });
+          }
+          const saved = reply.trim() || WEB_SEARCH_UNAVAILABLE_MESSAGE;
+          try {
+            await append(text, saved, citations);
+          } catch (persistError) {
+            logSafeError(persistError, apiKey);
+          }
+          const monthCost = latest.months[month]?.costMicroUsd ?? 0;
+          send({
+            type: "done",
+            monthSpendUsd: microUsdToNumber(monthCost),
+            capUsd: microUsdToNumber(capMicroUsd),
+            monthKey: month,
+          });
+        } else {
+          send({
+            type: "error",
+            message: "The assistant could not answer. Try again in a moment.",
+          });
+        }
       } finally {
         controller.close();
       }
@@ -236,11 +269,22 @@ async function loadAssistantState(): Promise<AppState> {
   return settled.changed ? saveState(settled.state) : loaded;
 }
 
-async function persistExchange(userText: string, reply: string): Promise<void> {
+async function persistExchange(
+  userText: string,
+  reply: string,
+  citations?: ChatCitation[]
+): Promise<void> {
   const stamp = new Date().toISOString();
+  const safeCitations = sanitizeCitations(citations);
   await updateState((state) => {
     const user: ChatMessage = { id: nanoid(), role: "user", text: userText, createdAt: stamp };
-    const dolla: ChatMessage = { id: nanoid(), role: "dolla", text: reply, createdAt: stamp };
+    const dolla: ChatMessage = {
+      id: nanoid(),
+      role: "dolla",
+      text: reply,
+      createdAt: stamp,
+      ...(safeCitations.length > 0 ? { citations: safeCitations } : {}),
+    };
     return {
       ...state,
       chatMessages: [...state.chatMessages, user, dolla].slice(-40),
@@ -270,6 +314,7 @@ function logUsage(entry: {
       cacheCreation5mTokens: entry.usage.cacheCreation5mTokens,
       cacheCreation1hTokens: entry.usage.cacheCreation1hTokens,
       cacheReadTokens: entry.usage.cacheReadTokens,
+      webSearchRequests: entry.usage.webSearchRequests ?? 0,
       requestCostMicroUsd: entry.requestCost,
       monthCostMicroUsd: entry.monthCost,
       capMicroUsd: entry.capMicroUsd,
@@ -277,8 +322,10 @@ function logUsage(entry: {
   );
 }
 
-function logSafeError(error: unknown) {
+function logSafeError(error: unknown, secret?: string) {
   const raw = error instanceof Error ? error.message : "unknown";
-  const redacted = raw.replace(/sk-ant-[A-Za-z0-9_-]+/g, "[redacted]");
+  let redacted = raw.replace(/sk-ant-[A-Za-z0-9_-]+/g, "[redacted]");
+  if (secret && secret.length >= 8) redacted = redacted.split(secret).join("[redacted]");
+  redacted = redacted.replace(/\bpin\b(\s*[:=]\s*|\s+)['"]?\d{4,8}\b/gi, "pin [redacted]");
   console.error("dolla.assistant.error", redacted);
 }

@@ -45,12 +45,20 @@ function sonnet46Price(): ModelPrice {
   };
 }
 
+/**
+ * Web search is $10 per 1,000 searches ($0.01 each), on top of token cost.
+ * Failed searches are not billed; the API leaves them out of `web_search_requests`.
+ */
+export const WEB_SEARCH_MICRO_USD_PER_USE = 10_000;
+
 export type TokenUsage = {
   inputTokens: number;
   outputTokens: number;
   cacheCreation5mTokens: number;
   cacheCreation1hTokens: number;
   cacheReadTokens: number;
+  /** Billed web_search uses for this round. Omitted means none. */
+  webSearchRequests?: number;
 };
 
 export function priceForModel(model: string): ModelPrice {
@@ -64,6 +72,7 @@ export function emptyUsage(): TokenUsage {
     cacheCreation5mTokens: 0,
     cacheCreation1hTokens: 0,
     cacheReadTokens: 0,
+    webSearchRequests: 0,
   };
 }
 
@@ -75,7 +84,7 @@ export function costMicroUsd(usage: TokenUsage, price: ModelPrice): number {
     nonNeg(usage.cacheCreation5mTokens) * price.cacheWrite5mPerMTokMicroUsd +
     nonNeg(usage.cacheCreation1hTokens) * price.cacheWrite1hPerMTokMicroUsd +
     nonNeg(usage.cacheReadTokens) * price.cacheReadPerMTokMicroUsd;
-  return Math.ceil(numerator / 1_000_000);
+  return Math.ceil(numerator / 1_000_000) + searchUses(usage.webSearchRequests) * WEB_SEARCH_MICRO_USD_PER_USE;
 }
 
 export function usageFromAnthropic(usage: {
@@ -87,9 +96,13 @@ export function usageFromAnthropic(usage: {
     ephemeral_5m_input_tokens?: number | null;
     ephemeral_1h_input_tokens?: number | null;
   } | null;
+  server_tool_use?: {
+    web_search_requests?: number | null;
+  } | null;
 }): TokenUsage {
   const five = usage.cache_creation?.ephemeral_5m_input_tokens;
   const hour = usage.cache_creation?.ephemeral_1h_input_tokens;
+  const webSearchRequests = searchUses(usage.server_tool_use?.web_search_requests);
   if (typeof five === "number" || typeof hour === "number") {
     return {
       inputTokens: nonNeg(usage.input_tokens),
@@ -97,6 +110,7 @@ export function usageFromAnthropic(usage: {
       cacheCreation5mTokens: nonNeg(five),
       cacheCreation1hTokens: nonNeg(hour),
       cacheReadTokens: nonNeg(usage.cache_read_input_tokens),
+      webSearchRequests,
     };
   }
   return {
@@ -105,6 +119,7 @@ export function usageFromAnthropic(usage: {
     cacheCreation5mTokens: nonNeg(usage.cache_creation_input_tokens),
     cacheCreation1hTokens: 0,
     cacheReadTokens: nonNeg(usage.cache_read_input_tokens),
+    webSearchRequests,
   };
 }
 
@@ -114,4 +129,9 @@ export function microUsdToNumber(micro: number): number {
 
 function nonNeg(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function searchUses(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
+  return Math.round(value);
 }

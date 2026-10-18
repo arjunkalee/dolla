@@ -111,6 +111,13 @@ export type ChatMessage = {
   role: "user" | "dolla";
   text: string;
   createdAt: string;
+  citations?: ChatCitation[];
+};
+
+/** A source link from web search. Titles and https URLs only — no page text. */
+export type ChatCitation = {
+  url: string;
+  title: string;
 };
 
 export type FormulaRow = {
