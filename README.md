@@ -13,7 +13,7 @@ This is Arjun’s real ledger. Checking, dated bills, and envelopes load as of A
 - **Split** — this paycheck pours into bills, envelopes, and leftover-to-invest. Envelopes are a plan until you count them.
 - **Two leftovers, never mixed** — leftover from this paycheck (can be negative) vs leftover in checking (prior cash plus the deposit). Every headline expands into labeled arithmetic.
 - **Amex default off** — reserved from the next paycheck unless you toggle it.
-- **Chat** — PIN-gated tab. Commands still edit the ledger: “log $10 dining”, “checking is 5100”, “Apple Card is paid”, “change groceries to 300”. Anything the parser does not recognize goes to Claude (read-only; it cannot edit yet) through `POST /api/assistant`. A monthly spend cap is tracked in the same durable store.
+- **Chat** — PIN-gated tab. Exact commands still edit the ledger immediately: “log $10 dining”, “checking is 5100”, “Apple Card is paid”, “change groceries to 300”. Anything the parser does not recognize goes to Claude through `POST /api/assistant`. The assistant can propose envelope, bill, checking, and expense edits. Each one shows a confirm card; nothing is written until Confirm. Confirm calls PIN-gated `POST /api/assistant/apply`, which saves only if every old value still matches, and writes an audit entry (`source: assistant`) on the ledger. Undo is on the card and at `POST /api/assistant/undo` (omit `auditId` for the most recent edit). A monthly spend cap is tracked in the same durable store.
 - **Destinations** — eTrade, Roth, HYSA. 401k match is employer. Travel and Misc stay spend envelopes.
 - **Live logging** — one-thumb Log. Checking, envelopes, and leftover formulas update immediately.
 

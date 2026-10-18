@@ -181,7 +181,20 @@ function payload(state: AppState, name: string, input: unknown) {
 
 async function main() {
   const tools = cachedAssistantTools();
-  expectEq("tool names", tools.map((tool) => tool.name).join(","), READ_TOOL_NAMES.join(","));
+  expectEq(
+    "read tools stay first",
+    tools
+      .map((tool) => tool.name)
+      .filter((name) => (READ_TOOL_NAMES as readonly string[]).includes(name))
+      .join(","),
+    READ_TOOL_NAMES.join(",")
+  );
+  expect("edit tools follow the read tools", tools.some((tool) => tool.name === "propose_log_expense"));
+  expectEq(
+    "read tools are a prefix",
+    tools.slice(0, READ_TOOL_NAMES.length).map((tool) => tool.name).join(","),
+    READ_TOOL_NAMES.join(",")
+  );
   expectEq("last tool cached", tools.at(-1)?.cache_control?.type, "ephemeral");
   expect(
     "only the last tool is a cache breakpoint",

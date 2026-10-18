@@ -1,6 +1,7 @@
 import { endOfMonth, formatAsOf, monthKey, startOfMonth, todayISO } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
-import type { AppState, Category, CategoryId, Expense } from "@/lib/types";
+import type { AppState, Category, CategoryId, ChatProposal, Expense } from "@/lib/types";
+import { EDIT_TOOL_DEFINITIONS, EDIT_TOOL_NAMES, executeEditTool } from "./proposals";
 
 /**
  * Read-only lookups over an already loaded ledger.
@@ -45,11 +46,11 @@ const CATEGORY_ALIASES: Record<string, CategoryId> = {
 };
 
 export type ToolOutcome =
-  | { ok: true; data: unknown }
+  | { ok: true; data: unknown; proposal?: ChatProposal }
   | { ok: false; error: string };
 
 export type AssistantTool = {
-  name: ReadToolName;
+  name: string;
   description: string;
   input_schema: {
     type: "object";
@@ -144,13 +145,27 @@ const TOOL_DEFINITIONS: readonly AssistantTool[] = [
   },
 ];
 
-/** Stable tool list. The last definition carries the prompt-cache breakpoint. */
+/** Stable tool list. Read tools stay first. The last definition carries the prompt-cache breakpoint. */
 export function cachedAssistantTools(): AssistantTool[] {
-  return TOOL_DEFINITIONS.map((tool, index) =>
-    index === TOOL_DEFINITIONS.length - 1
-      ? { ...tool, cache_control: { type: "ephemeral" } }
-      : { ...tool }
+  const tools: AssistantTool[] = [...TOOL_DEFINITIONS, ...EDIT_TOOL_DEFINITIONS];
+  return tools.map((tool, index) =>
+    index === tools.length - 1 ? { ...tool, cache_control: { type: "ephemeral" } } : { ...tool }
   );
+}
+
+export function executeAssistantTool(
+  state: AppState,
+  name: string,
+  input: unknown,
+  now = new Date()
+): ToolOutcome {
+  if ((READ_TOOL_NAMES as readonly string[]).includes(name)) {
+    return executeReadTool(state, name, input, now);
+  }
+  if ((EDIT_TOOL_NAMES as readonly string[]).includes(name)) {
+    return executeEditTool(state, name, input, now);
+  }
+  return { ok: false, error: "That tool is not available. Reads only." };
 }
 
 export function executeReadTool(

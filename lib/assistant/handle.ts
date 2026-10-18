@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { sessionValid } from "@/lib/auth";
 import { markBillsPastDuePaid, nowISO } from "@/lib/freshness";
 import { loadState, saveState, updateState } from "@/lib/store";
-import type { AppState, ChatCitation, ChatMessage } from "@/lib/types";
+import type { AppState, ChatCitation, ChatMessage, ChatProposal } from "@/lib/types";
 import { todayISO } from "@/lib/dates";
 import { streamAssistant, type AssistantStreamArgs } from "./anthropic";
 import { runToolLoop, type AssistantRound } from "./loop";
@@ -11,7 +11,7 @@ import { MAX_OUTPUT_TOKENS, resolveAssistantModel } from "./models";
 import { cachedSystemPrompt } from "./prompt";
 import { costMicroUsd, microUsdToNumber, priceForModel, type TokenUsage } from "./pricing";
 import { buildStateSnapshot } from "./snapshot";
-import { cachedAssistantTools, executeReadTool, type AssistantTool, type ToolOutcome } from "./tools";
+import { cachedAssistantTools, executeAssistantTool, type AssistantTool, type ToolOutcome } from "./tools";
 import {
   addRequestUsage,
   capBlockMessage,
@@ -33,6 +33,11 @@ import {
 
 const MAX_USER_CHARS = 4_000;
 
+export type AssistantExchange = {
+  proposals?: ChatProposal[];
+  citations?: ChatCitation[];
+};
+
 export type AssistantStreamCall = AssistantStreamArgs & {
   maxTokens: number;
   system: ReturnType<typeof cachedSystemPrompt>;
@@ -48,7 +53,7 @@ type HandleInput = {
   signal?: AbortSignal;
   loadLedger?: () => Promise<AppState>;
   mutateUsage?: (mutator: (ledger: AiUsageLedger) => AiUsageLedger) => Promise<AiUsageLedger>;
-  appendExchange?: (userText: string, reply: string, citations?: ChatCitation[]) => Promise<void>;
+  appendExchange?: (userText: string, reply: string, exchange?: AssistantExchange) => Promise<void>;
   streamReply?: (args: AssistantStreamCall) => Promise<AssistantRound>;
   executeTool?: (state: AppState, name: string, input: unknown, now: Date) => ToolOutcome;
 };
@@ -149,7 +154,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
   const messages: ModelMessage[] = buildModelMessages(state.chatMessages, snapshot, text);
   const system = cachedSystemPrompt();
   const tools = cachedAssistantTools();
-  const executeTool = input.executeTool ?? executeReadTool;
+  const executeTool = input.executeTool ?? executeAssistantTool;
 
   const encoder = new TextEncoder();
   const body = new ReadableStream({
@@ -159,6 +164,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
       };
       let reply = "";
       let latest = gated;
+      const proposals: ChatProposal[] = [];
       let citations: ChatCitation[] = [];
       try {
         await runToolLoop({
@@ -203,6 +209,11 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
               send({ type: "status", status: "looking_up" });
               return;
             }
+            if (event.type === "proposal") {
+              proposals.push(event.proposal);
+              send({ type: "proposal", proposal: event.proposal });
+              return;
+            }
             if (event.type === "citations") {
               citations = event.citations;
               send({ type: "citations", citations: event.citations });
@@ -213,7 +224,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
           },
         });
         const saved = reply.trim() || "I don't have a reply for that.";
-        await append(text, saved, citations);
+        await append(text, saved, exchangeOf(proposals, citations));
         const monthCost = latest.months[month]?.costMicroUsd ?? 0;
         send({
           type: "done",
@@ -231,7 +242,7 @@ export async function handleAssistantRequest(input: HandleInput): Promise<Respon
           }
           const saved = reply.trim() || WEB_SEARCH_UNAVAILABLE_MESSAGE;
           try {
-            await append(text, saved, citations);
+            await append(text, saved, exchangeOf(proposals, citations));
           } catch (persistError) {
             logSafeError(persistError, apiKey);
           }
@@ -269,13 +280,30 @@ async function loadAssistantState(): Promise<AppState> {
   return settled.changed ? saveState(settled.state) : loaded;
 }
 
+function pendingProposal(proposal: ChatProposal): ChatProposal {
+  return {
+    ...proposal,
+    status: "pending",
+    auditId: undefined,
+    changes: proposal.changes.map((change) => ({ ...change })),
+  };
+}
+
+function exchangeOf(proposals: ChatProposal[], citations: ChatCitation[]): AssistantExchange {
+  return {
+    proposals: proposals.map(pendingProposal),
+    citations,
+  };
+}
+
 async function persistExchange(
   userText: string,
   reply: string,
-  citations?: ChatCitation[]
+  exchange?: AssistantExchange
 ): Promise<void> {
   const stamp = new Date().toISOString();
-  const safeCitations = sanitizeCitations(citations);
+  const proposals = (exchange?.proposals ?? []).map(pendingProposal);
+  const safeCitations = sanitizeCitations(exchange?.citations);
   await updateState((state) => {
     const user: ChatMessage = { id: nanoid(), role: "user", text: userText, createdAt: stamp };
     const dolla: ChatMessage = {
@@ -283,6 +311,7 @@ async function persistExchange(
       role: "dolla",
       text: reply,
       createdAt: stamp,
+      ...(proposals.length > 0 ? { proposals } : {}),
       ...(safeCitations.length > 0 ? { citations: safeCitations } : {}),
     };
     return {

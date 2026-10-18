@@ -2,7 +2,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createClient, type Client } from "@libsql/client";
 import { Redis } from "@upstash/redis";
-import type { AppState, StoreInfo } from "./types";
+import { sanitizeCitations } from "./assistant/web-search";
+import type { AppState, AssistantAuditEntry, ChatMessage, ChatProposal, StoreInfo } from "./types";
 import { STATE_VERSION } from "./types";
 import { defaultSplitAllocations, realState } from "./seed";
 
@@ -235,6 +236,53 @@ function optionalIso(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+const PROPOSAL_STATUSES = new Set(["pending", "applied", "cancelled", "undone", "stale"]);
+
+function normalizeAudit(value: unknown): AssistantAuditEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is AssistantAuditEntry => {
+    if (!entry || typeof entry !== "object") return false;
+    const row = entry as Partial<AssistantAuditEntry>;
+    return (
+      typeof row.id === "string" &&
+      typeof row.at === "string" &&
+      typeof row.tool === "string" &&
+      typeof row.summary === "string" &&
+      row.source === "assistant" &&
+      Array.isArray(row.before) &&
+      Array.isArray(row.after)
+    );
+  });
+}
+
+function normalizeProposals(value: unknown): ChatProposal[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const proposals = value.filter((entry): entry is ChatProposal => {
+    if (!entry || typeof entry !== "object") return false;
+    const row = entry as Partial<ChatProposal>;
+    return (
+      typeof row.id === "string" &&
+      typeof row.tool === "string" &&
+      typeof row.summary === "string" &&
+      typeof row.status === "string" &&
+      PROPOSAL_STATUSES.has(row.status) &&
+      Array.isArray(row.changes)
+    );
+  });
+  return proposals.length ? proposals : undefined;
+}
+
+function normalizeMessage(message: ChatMessage): ChatMessage {
+  const proposals = normalizeProposals(message.proposals);
+  const citations = sanitizeCitations(message.citations);
+  const next: ChatMessage = { ...message };
+  if (proposals) next.proposals = proposals;
+  else delete next.proposals;
+  if (citations.length > 0) next.citations = citations;
+  else delete next.citations;
+  return next;
+}
+
 function normalize(state: AppState): AppState {
   return {
     ...state,
@@ -245,8 +293,9 @@ function normalize(state: AppState): AppState {
       ...bill,
       updatedAt: optionalIso(bill.updatedAt),
     })),
-    chatMessages: state.chatMessages ?? [],
+    chatMessages: (state.chatMessages ?? []).map(normalizeMessage),
     chatPending: state.chatPending ?? null,
+    assistantAudit: normalizeAudit(state.assistantAudit),
     splitAllocations: state.splitAllocations?.length
       ? state.splitAllocations
       : defaultSplitAllocations(state.categories),
