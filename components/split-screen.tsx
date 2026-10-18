@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { envelopeSpend } from "@/lib/envelope-spend";
+import { useHideDollars } from "@/lib/hide-dollars";
 import { formatCents, dollarsToCents } from "@/lib/money";
 import type { CategoryId, SplitAllocation } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,12 @@ import {
 } from "@/components/ui/drawer";
 import { useDolla } from "./dolla-provider";
 import { FormulaBlock } from "./formula-block";
+
+const HIDDEN_AMOUNT = "••••";
+
+function visibleCents(cents: number, hidden: boolean): string {
+  return hidden ? HIDDEN_AMOUNT : formatCents(cents);
+}
 
 const ENVELOPE_COLORS: Record<string, string> = {
   gas: "oklch(0.72 0.12 85)",
@@ -45,6 +52,14 @@ type Bucket = {
   empty?: boolean;
 };
 
+function envelopeStatus(bucket: Bucket, hidden: boolean): string {
+  if (bucket.empty) return "Empty this month";
+  const over = bucket.remainingCents !== undefined && bucket.remainingCents < 0;
+  if (hidden) return over ? "Over" : "Left";
+  if (over) return `Over ${formatCents(Math.abs(bucket.remainingCents ?? 0))}`;
+  return `Left ${formatCents(bucket.remainingCents ?? 0)}`;
+}
+
 function useCountUp(target: number, duration = 720) {
   const [value, setValue] = useState(0);
   useEffect(() => {
@@ -62,8 +77,10 @@ function useCountUp(target: number, duration = 720) {
   return value;
 }
 
-export function SplitScreen() {
+export function SplitScreen({ embedded = false }: { embedded?: boolean }) {
   const { state, insights, saveSplit } = useDolla();
+  const [hideDollars] = useHideDollars();
+  const maskMoney = embedded && hideDollars;
   const [openId, setOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -155,9 +172,17 @@ export function SplitScreen() {
   }
 
   return (
-    <div className="space-y-5">
+    <div
+      className="space-y-5"
+      data-dollars={maskMoney ? "hidden" : "shown"}
+      data-embedded={embedded ? "true" : undefined}
+    >
       <header>
-        <h1 className="text-[1.75rem] font-semibold tracking-tight">Split</h1>
+        {embedded ? (
+          <h2 className="text-xl font-semibold tracking-tight">Spent vs budget</h2>
+        ) : (
+          <h1 className="text-[1.75rem] font-semibold tracking-tight">Split</h1>
+        )}
         <p className="mt-1 text-sm text-muted-foreground">
           This paycheck pours into bills first. Envelopes are a plan until you count them.
         </p>
@@ -165,7 +190,9 @@ export function SplitScreen() {
 
       <div className="relative overflow-hidden rounded-[1.75rem] bg-gradient-to-b from-primary/25 to-card px-5 py-6 ring-1 ring-primary/30">
         <p className="text-sm text-primary">This paycheck</p>
-        <p className="mt-1 font-mono text-4xl font-semibold tracking-tight">{formatCents(poured)}</p>
+        <p className="mt-1 font-mono text-4xl font-semibold tracking-tight">
+          {visibleCents(poured, maskMoney)}
+        </p>
         <p className="mt-2 text-sm text-muted-foreground">
           Already in checking. Split is allocation, not a second deposit.
         </p>
@@ -182,6 +209,7 @@ export function SplitScreen() {
               max={maxVisual}
               delay={80 + i * 70}
               ready={ready}
+              hideDollars={maskMoney}
               wide={/rent/i.test(bucket.label)}
               onOpen={() => setOpenId(bucket.id)}
             />
@@ -193,9 +221,11 @@ export function SplitScreen() {
         <h2 className="mb-1 text-sm font-medium">Envelopes · play, not withdrawn</h2>
         <p className="mb-2 text-xs text-muted-foreground">
           Spent against each monthly envelope. Empty ones stay listed.
-          {listedSpentCents === insights.monthSpentCents
-            ? ` ${formatCents(listedSpentCents)} matches Spent this month.`
-            : ` These envelopes ${formatCents(listedSpentCents)}. Spent this month ${formatCents(insights.monthSpentCents)}.`}
+          {maskMoney
+            ? " Dollar amounts are hidden."
+            : listedSpentCents === insights.monthSpentCents
+              ? ` ${formatCents(listedSpentCents)} matches Spent this month.`
+              : ` These envelopes ${formatCents(listedSpentCents)}. Spent this month ${formatCents(insights.monthSpentCents)}.`}
         </p>
         <div className="grid grid-cols-2 gap-2">
           {envelopeBuckets.map((bucket, i) => (
@@ -205,6 +235,7 @@ export function SplitScreen() {
               max={maxVisual}
               delay={280 + i * 55}
               ready={ready}
+              hideDollars={maskMoney}
               onOpen={() => {
                 setDraft(((bucket.cents || bucket.suggestedCents || 0) / 100).toString());
                 setOpenId(bucket.id);
@@ -228,14 +259,20 @@ export function SplitScreen() {
               leftover.cents < 0 && "text-destructive"
             )}
           >
-            {formatCents(leftoverShown)}
+            {visibleCents(leftoverShown, maskMoney)}
           </p>
           <p className="mt-2 text-sm opacity-80">
-            Official leftover is {formatCents(insights.leftoverPaycheckCents)} after bills
-            {insights.optedInEnvelopeCents > 0
-              ? ` and ${formatCents(insights.optedInEnvelopeCents)} counted envelopes`
-              : ""}
-            . Play amounts above do not count until you opt them in.
+            {maskMoney ? (
+              "Dollar amounts are hidden. Play amounts do not count until you opt them in."
+            ) : (
+              <>
+                Official leftover is {formatCents(insights.leftoverPaycheckCents)} after bills
+                {insights.optedInEnvelopeCents > 0
+                  ? ` and ${formatCents(insights.optedInEnvelopeCents)} counted envelopes`
+                  : ""}
+                . Play amounts above do not count until you opt them in.
+              </>
+            )}
           </p>
         </button>
       </section>
@@ -261,7 +298,9 @@ export function SplitScreen() {
               </DrawerHeader>
               <div className="space-y-3 px-4 pb-2">
                 {openBucket.kind !== "envelope" && (
-                  <p className="font-mono text-3xl font-semibold">{formatCents(openBucket.cents)}</p>
+                  <p className="font-mono text-3xl font-semibold">
+                    {visibleCents(openBucket.cents, maskMoney)}
+                  </p>
                 )}
                 {openBucket.kind === "bill" && insights.formulas.cards && (
                   <FormulaBlock
@@ -269,10 +308,11 @@ export function SplitScreen() {
                       /rent/i.test(openBucket.label) ? insights.formulas.paycheck : insights.formulas.cards
                     }
                     defaultOpen
+                    hideAmounts={maskMoney}
                   />
                 )}
                 {openBucket.kind === "leftover" && (
-                  <FormulaBlock formula={insights.formulas.paycheck} defaultOpen />
+                  <FormulaBlock formula={insights.formulas.paycheck} defaultOpen hideAmounts={maskMoney} />
                 )}
                 {openBucket.kind === "envelope" && openBucket.categoryId && (
                   <>
@@ -282,18 +322,22 @@ export function SplitScreen() {
                         openBucket.empty && "font-medium text-muted-foreground/80"
                       )}
                     >
-                      {formatCents(openBucket.spentCents ?? 0)}
+                      {visibleCents(openBucket.spentCents ?? 0, maskMoney)}
                       <span className="text-lg font-normal text-muted-foreground">
                         {" "}
-                        / {formatCents(openBucket.budgetCents ?? 0)}
+                        / {visibleCents(openBucket.budgetCents ?? 0, maskMoney)}
                       </span>
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {openBucket.empty
                         ? "Empty this month."
-                        : openBucket.remainingCents !== undefined && openBucket.remainingCents < 0
-                          ? `Over by ${formatCents(Math.abs(openBucket.remainingCents))}.`
-                          : `${formatCents(openBucket.remainingCents ?? 0)} left this month.`}
+                        : maskMoney
+                          ? openBucket.remainingCents !== undefined && openBucket.remainingCents < 0
+                            ? "Over this month."
+                            : "Left this month."
+                          : openBucket.remainingCents !== undefined && openBucket.remainingCents < 0
+                            ? `Over by ${formatCents(Math.abs(openBucket.remainingCents))}.`
+                            : `${formatCents(openBucket.remainingCents ?? 0)} left this month.`}
                     </p>
                     <Input
                       inputMode="decimal"
@@ -311,7 +355,7 @@ export function SplitScreen() {
                           setDraft(((openBucket.suggestedCents ?? 0) / 100).toString());
                         }}
                       >
-                        Suggest {formatCents(openBucket.suggestedCents ?? 0)}
+                        Suggest {visibleCents(openBucket.suggestedCents ?? 0, maskMoney)}
                       </Button>
                       <Button
                         className="h-11 flex-1"
@@ -344,6 +388,7 @@ export function SplitScreen() {
                     <FormulaBlock
                       formula={insights.formulas[`envelope-${openBucket.categoryId}`]}
                       defaultOpen
+                      hideAmounts={maskMoney}
                     />
                   </>
                 )}
@@ -366,6 +411,7 @@ function BucketCard({
   max,
   delay,
   ready,
+  hideDollars,
   wide,
   onOpen,
 }: {
@@ -373,6 +419,7 @@ function BucketCard({
   max: number;
   delay: number;
   ready: boolean;
+  hideDollars: boolean;
   wide?: boolean;
   onOpen: () => void;
 }) {
@@ -434,14 +481,14 @@ function BucketCard({
                   empty && "font-medium text-muted-foreground/75"
                 )}
               >
-                {formatCents(spentShown)}
+                {hideDollars ? HIDDEN_AMOUNT : formatCents(spentShown)}
                 <span
                   className={cn(
                     "ml-1 text-xs font-normal",
                     empty ? "text-muted-foreground/60" : "text-muted-foreground"
                   )}
                 >
-                  / {formatCents(budgetCents)}
+                  / {hideDollars ? HIDDEN_AMOUNT : formatCents(budgetCents)}
                 </span>
               </span>
               <span
@@ -450,21 +497,21 @@ function BucketCard({
                   empty ? "text-muted-foreground/70" : "text-muted-foreground"
                 )}
               >
-                {empty
-                  ? "Empty this month"
-                  : bucket.remainingCents !== undefined && bucket.remainingCents < 0
-                    ? `Over ${formatCents(Math.abs(bucket.remainingCents))}`
-                    : `Left ${formatCents(bucket.remainingCents ?? 0)}`}
+                {envelopeStatus(bucket, hideDollars)}
               </span>
               <span className="text-[11px] text-muted-foreground">
                 {bucket.optedIn ? "Counted" : "Plan only"}
-                {bucket.cents > 0 ? ` · ${formatCents(shown)}` : ""}
-                {bucket.suggestedCents ? ` · suggest ${formatCents(bucket.suggestedCents)}` : ""}
+                {!hideDollars && bucket.cents > 0 ? ` · ${formatCents(shown)}` : ""}
+                {!hideDollars && bucket.suggestedCents
+                  ? ` · suggest ${formatCents(bucket.suggestedCents)}`
+                  : ""}
               </span>
             </>
           ) : (
             <>
-              <span className="block font-mono text-lg font-semibold">{formatCents(shown)}</span>
+              <span className="block font-mono text-lg font-semibold">
+                {hideDollars ? HIDDEN_AMOUNT : formatCents(shown)}
+              </span>
               {bucket.kind === "bill" && (
                 <span className="text-[11px] text-muted-foreground">Due this check</span>
               )}

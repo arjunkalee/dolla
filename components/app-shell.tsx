@@ -6,7 +6,6 @@ import {
   CalendarDays,
   CircleUser,
   House,
-  Layers,
   MessageCircle,
   PieChart,
   Receipt,
@@ -20,7 +19,6 @@ import { LogPurchaseDrawer } from "./log-purchase";
 const ICONS: Record<NavTabHref, LucideIcon> = {
   "/": House,
   "/month": CalendarDays,
-  "/split": Layers,
   "/budget": PieChart,
   "/chat": MessageCircle,
   "/profile": CircleUser,
@@ -32,7 +30,7 @@ const TAB_COLS: Record<number, string> = {
   3: "grid-cols-3",
 };
 
-/** Three destinations, then the raised Log button, then the rest — Log stays centered. */
+/** Home, Calendar, and Budget, then the raised Log button, then Chat and Profile. */
 const LEFT_TABS = NAV_TABS.slice(0, 3);
 const RIGHT_TABS = NAV_TABS.slice(3);
 
