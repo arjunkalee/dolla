@@ -1,5 +1,6 @@
-import { SplitScreen } from "@/components/split-screen";
+import { redirect } from "next/navigation";
 
+/** Former Split tab. The combined Budget tab owns this screen. */
 export default function SplitPage() {
-  return <SplitScreen />;
+  redirect("/budget");
 }

@@ -197,6 +197,8 @@ const shareLib = readFileSync(path.join(root, "lib/budget-share.ts"), "utf8");
 const hideLib = readFileSync(path.join(root, "lib/hide-dollars.ts"), "utf8");
 const nav = readFileSync(path.join(root, "lib/nav.ts"), "utf8");
 const page = readFileSync(path.join(root, "app/(app)/budget/page.tsx"), "utf8");
+const splitPage = readFileSync(path.join(root, "app/(app)/split/page.tsx"), "utf8");
+const splitScreen = readFileSync(path.join(root, "components/split-screen.tsx"), "utf8");
 
 expect("screen uses the breakdown helper", screen.includes("budgetBreakdown("));
 expect("screen reads envelope budgets from insights", screen.includes("insights.categories"));
@@ -210,7 +212,14 @@ expect("pie center, tooltip, and labels follow the toggle", screen.includes("bud
 expect("choice is stored in localStorage", hideLib.includes("localStorage") && hideLib.includes("dolla.budget.hideDollars"));
 expect("percentage helper is still the only apportionment", shareLib.includes("export function largestRemainderPercents"));
 expect("page mounts the breakdown", page.includes("BudgetBreakdownScreen"));
+expect("page mounts the spent-vs-budget list", page.includes("SplitScreen"));
 expect("nav has a Budget tab", nav.includes('label: "Budget"') && nav.includes('href: "/budget"'));
+expect("nav dropped the separate Split tab", !nav.includes('href: "/split"'));
+expect("old split route redirects to the combined tab", splitPage.includes('redirect("/budget")'));
+expect(
+  "spent list follows the same hide-dollars toggle",
+  splitScreen.includes("useHideDollars") && splitScreen.includes("embedded && hideDollars")
+);
 expect(
   "amounts stay out of the screen",
   !screen.includes("1432") && !screen.includes("2782") && !screen.includes("5542") && !screen.includes("2760")

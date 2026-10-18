@@ -11,12 +11,14 @@ export function FormulaBlock({
   muted = false,
   inverted = false,
   quiet = false,
+  hideAmounts = false,
 }: {
   formula?: Formula;
   defaultOpen?: boolean;
   muted?: boolean;
   inverted?: boolean;
   quiet?: boolean;
+  hideAmounts?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   if (!formula || formula.rows.length === 0) return null;
@@ -32,7 +34,9 @@ export function FormulaBlock({
         )}
       >
         <span className="font-medium">{quiet && !open ? "How this is counted" : formula.title}</span>
-        {quiet ? null : <span className="font-mono">{formatCents(formula.resultCents)}</span>}
+        {quiet ? null : (
+          <span className="font-mono">{hideAmounts ? "••••" : formatCents(formula.resultCents)}</span>
+        )}
       </button>
       {open ? (
         <ol className="space-y-1 border-t border-current/15 pb-2 pt-2 font-mono text-xs">
@@ -51,7 +55,7 @@ export function FormulaBlock({
                   {op ? `${op} ` : ""}
                   {row.label}
                 </span>
-                <span className="shrink-0">{formatCents(row.cents)}</span>
+                <span className="shrink-0">{hideAmounts ? "••••" : formatCents(row.cents)}</span>
               </li>
             );
           })}

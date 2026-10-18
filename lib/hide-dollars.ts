@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 
-/** localStorage flag for the Budget tab dollar-amount toggle. */
+/** localStorage flag for hiding dollar amounts on the combined Budget tab. */
 export const HIDE_DOLLARS_STORAGE_KEY = "dolla.budget.hideDollars";
 
 const CHANGE_EVENT = "dolla-budget-hide-dollars";
