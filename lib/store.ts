@@ -147,6 +147,84 @@ async function writeRaw(state: AppState): Promise<void> {
   await rename(tmp, full);
 }
 
+function assertAuxKey(key: string) {
+  if (key === KV_KEY || !/^dolla:[a-z0-9:-]+$/.test(key)) {
+    throw new Error("Invalid store key.");
+  }
+}
+
+function auxFilePath(key: string): string {
+  assertAuxKey(key);
+  return path.join(process.cwd(), "data", `${key.replace(/:/g, "-")}.json`);
+}
+
+/** Side documents (assistant usage) on the same Turso / KV / local file backend as the ledger. */
+async function readAux(key: string): Promise<unknown | null> {
+  assertAuxKey(key);
+  const info = storeInfo();
+  if (info.backend === "turso") {
+    await ensureTursoTable();
+    const result = await getTurso().execute({
+      sql: "SELECT value FROM kv WHERE key = ?",
+      args: [key],
+    });
+    const value = result.rows[0]?.value;
+    if (typeof value !== "string") return null;
+    return JSON.parse(value) as unknown;
+  }
+  if (info.backend === "kv") {
+    return (await getKv().get(key)) ?? null;
+  }
+  if (onVercel()) return null;
+  try {
+    const text = await readFile(auxFilePath(key), "utf8");
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+async function writeAux(key: string, value: unknown): Promise<void> {
+  assertAuxKey(key);
+  assertDurableWrite();
+  const info = storeInfo();
+  if (info.backend === "turso") {
+    await ensureTursoTable();
+    await getTurso().execute({
+      sql: "INSERT INTO kv(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      args: [key, JSON.stringify(value)],
+    });
+    return;
+  }
+  if (info.backend === "kv") {
+    await getKv().set(key, value);
+    return;
+  }
+  const full = auxFilePath(key);
+  await mkdir(path.dirname(full), { recursive: true });
+  const tmp = `${full}.${process.pid}.tmp`;
+  await writeFile(tmp, JSON.stringify(value, null, 2), "utf8");
+  await rename(tmp, full);
+}
+
+export async function readJsonKey<T>(key: string): Promise<T | null> {
+  return enqueue(async () => (await readAux(key)) as T | null);
+}
+
+export async function updateJsonKey<T>(
+  key: string,
+  fallback: T,
+  mutator: (current: T) => T
+): Promise<T> {
+  return enqueue(async () => {
+    const raw = await readAux(key);
+    const current = (raw ?? fallback) as T;
+    const next = mutator(current);
+    await writeAux(key, next);
+    return next;
+  });
+}
+
 function looksLikeLedger(state: unknown): state is AppState {
   if (!state || typeof state !== "object") return false;
   const value = state as Partial<AppState>;

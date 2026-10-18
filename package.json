@@ -16,9 +16,11 @@
     "test:nav": "tsx scripts/verify-home-nav.ts",
     "test:split": "tsx scripts/verify-split-envelopes.ts",
     "test:pin": "tsx scripts/verify-pin.ts",
-    "test:budget": "tsx scripts/verify-budget.ts"
+    "test:budget": "tsx scripts/verify-budget.ts",
+    "test:assistant": "tsx scripts/verify-assistant.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@base-ui/react": "^1.7.0",
     "@libsql/client": "^0.17.4",
     "@upstash/redis": "^1.38.3",
