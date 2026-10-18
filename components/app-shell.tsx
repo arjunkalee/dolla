@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
+  ChevronLeft,
   CircleUser,
   House,
   MessageCircle,
@@ -21,7 +22,6 @@ const ICONS: Record<NavTabHref, LucideIcon> = {
   "/month": CalendarDays,
   "/budget": PieChart,
   "/chat": MessageCircle,
-  "/profile": CircleUser,
 };
 
 const TAB_COLS: Record<number, string> = {
@@ -30,18 +30,51 @@ const TAB_COLS: Record<number, string> = {
   3: "grid-cols-3",
 };
 
-/** Home, Calendar, and Budget, then the raised Log button, then Chat and Profile. */
+/** Home, Calendar, Budget | Log | Chat. Equal-width sides keep the raised Log button centered. */
 const LEFT_TABS = NAV_TABS.slice(0, 3);
 const RIGHT_TABS = NAV_TABS.slice(3);
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const activeHref = activeNavHref(pathname);
   const { setLogOpen, loading, error, refresh } = useDolla();
+  const onProfile = pathname === "/profile";
+
+  function returnFromProfile() {
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/");
+  }
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col bg-background">
-      <main className="flex-1 px-4 pb-28 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <header className="sticky top-0 z-30 shrink-0 bg-background/95 pl-[max(0.25rem,env(safe-area-inset-left))] pr-[max(0.25rem,env(safe-area-inset-right))] pt-[env(safe-area-inset-top)] backdrop-blur-md">
+        <div className={cn("flex h-12 items-center", onProfile ? "justify-start" : "justify-end")}>
+          {onProfile ? (
+            <button
+              type="button"
+              onClick={returnFromProfile}
+              aria-label="Back"
+              className="inline-flex h-11 items-center gap-0.5 rounded-full pr-3 pl-1 text-sm font-medium text-foreground touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronLeft className="size-5" aria-hidden />
+              Back
+            </button>
+          ) : (
+            <Link
+              href="/profile"
+              aria-label="Profile"
+              className="mr-1 flex size-11 items-center justify-center rounded-full text-foreground touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted"
+            >
+              <CircleUser className="size-6" aria-hidden />
+            </Link>
+          )}
+        </div>
+      </header>
+      <main className="flex-1 px-4 pb-28 pt-2">
         {loading ? (
           <div className="space-y-3 pt-6">
             <div className="h-8 w-40 animate-pulse rounded-lg bg-muted" />
