@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Eye, EyeOff } from "lucide-react";
+import { budgetCategoryHref } from "@/lib/category-expenses";
 import { formatCents } from "@/lib/money";
 import {
+  INVEST_SHARE_ID,
   budgetBreakdown,
   budgetCenterText,
   budgetSliceCaption,
@@ -22,9 +25,14 @@ const OUTER = 46;
 const INNER = 29;
 
 export function BudgetBreakdownScreen() {
+  const router = useRouter();
   const { state, insights } = useDolla();
   const [hideDollars, setHideDollars] = useHideDollars();
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  function openCategory(id: string) {
+    router.push(budgetCategoryHref(id));
+  }
 
   if (!state || !insights) return null;
 
@@ -89,6 +97,7 @@ export function BudgetBreakdownScreen() {
           hideDollars={hideDollars}
           activeId={active.id}
           onSelect={setActiveId}
+          onOpen={openCategory}
         />
       </article>
 
@@ -100,11 +109,13 @@ export function BudgetBreakdownScreen() {
           const selected = share.id === active.id;
           return (
             <li key={share.id} className={cn(selected && "bg-muted")}>
-              <button
-                type="button"
+              <Link
+                href={budgetCategoryHref(share.id)}
                 aria-current={selected ? "true" : undefined}
-                onClick={() => setActiveId(share.id)}
-                className="flex min-h-14 w-full items-center gap-3 px-4 text-left touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                onPointerEnter={(event) => {
+                  if (event.pointerType === "mouse") setActiveId(share.id);
+                }}
+                className="flex min-h-14 w-full items-center gap-3 px-4 text-left touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-muted"
               >
                 <span
                   aria-hidden
@@ -125,7 +136,11 @@ export function BudgetBreakdownScreen() {
                 >
                   {share.percent}%
                 </span>
-              </button>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="sr-only">
+                  {share.id === INVEST_SHARE_ID ? "Show what's left this month" : "Show this month's expenses"}
+                </span>
+              </Link>
             </li>
           );
         })}
@@ -147,12 +162,14 @@ function BudgetPie({
   hideDollars,
   activeId,
   onSelect,
+  onOpen,
 }: {
   shares: BudgetShare[];
   totalCents: number;
   hideDollars: boolean;
   activeId: string;
   onSelect: (id: string) => void;
+  onOpen: (id: string) => void;
 }) {
   const center = budgetCenterText(totalCents, hideDollars);
   const active = shares.find((share) => share.id === activeId) ?? null;
@@ -188,23 +205,25 @@ function BudgetPie({
           {slices.map(({ share, start, end, sweep }) => {
             const selected = share.id === activeId;
             const caption = budgetSliceCaption(share, hideDollars);
+            const action =
+              share.id === INVEST_SHARE_ID ? "Show what's left this month." : "Show this month's expenses.";
             const full = sweep >= Math.PI * 2 - 1e-4;
             return (
               <g
                 key={share.id}
                 role="button"
                 tabIndex={0}
-                aria-label={caption}
+                aria-label={`${caption}. ${action}`}
                 aria-current={selected ? "true" : undefined}
                 className="cursor-pointer outline-none"
-                onClick={() => onSelect(share.id)}
+                onClick={() => onOpen(share.id)}
                 onPointerEnter={(event) => {
                   if (event.pointerType === "mouse") onSelect(share.id);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    onSelect(share.id);
+                    onOpen(share.id);
                   }
                 }}
               >
