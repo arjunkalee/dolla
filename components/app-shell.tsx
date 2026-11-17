@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { activeNavHref, NAV_TABS, type NavTabHref } from "@/lib/nav";
+import { activeNavHref, LEFT_NAV_TABS, NAV_TABS, RIGHT_NAV_TABS, type NavTabHref } from "@/lib/nav";
 import { useDolla } from "./dolla-provider";
 import { LogPurchaseDrawer } from "./log-purchase";
 
@@ -30,10 +30,7 @@ const TAB_COLS: Record<number, string> = {
   3: "grid-cols-3",
 };
 
-/** Home, Calendar, Budget | Log | Chat. Equal-width sides keep the raised Log button centered. */
-const LEFT_TABS = NAV_TABS.slice(0, 3);
-const RIGHT_TABS = NAV_TABS.slice(3);
-
+/** Home, Calendar | Log | Budget, Chat. Equal-width sides keep the raised Log button centered. */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -103,8 +100,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-lg border-t border-border/80 bg-background/95 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-md"
       >
         <div className="flex items-end px-1">
-          <div className={cn("grid min-w-0 flex-1", TAB_COLS[LEFT_TABS.length] ?? "grid-cols-3")}>
-            {LEFT_TABS.map((tab) => (
+          <div className={cn("grid min-w-0 flex-1", TAB_COLS[LEFT_NAV_TABS.length] ?? "grid-cols-2")}>
+            {LEFT_NAV_TABS.map((tab) => (
               <TabLink key={tab.href} tab={tab} active={activeHref === tab.href} />
             ))}
           </div>
@@ -119,8 +116,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
             <span className="text-[11px] font-medium text-primary">Log</span>
           </button>
-          <div className={cn("grid min-w-0 flex-1", TAB_COLS[RIGHT_TABS.length] ?? "grid-cols-3")}>
-            {RIGHT_TABS.map((tab) => (
+          <div className={cn("grid min-w-0 flex-1", TAB_COLS[RIGHT_NAV_TABS.length] ?? "grid-cols-2")}>
+            {RIGHT_NAV_TABS.map((tab) => (
               <TabLink key={tab.href} tab={tab} active={activeHref === tab.href} />
             ))}
           </div>

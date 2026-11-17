@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { activeNavHref, NAV_TABS } from "../lib/nav";
+import { activeNavHref, LEFT_NAV_TABS, NAV_TABS, RIGHT_NAV_TABS } from "../lib/nav";
 
 function expect(label: string, cond: unknown, detail = "") {
   if (!cond) throw new Error(detail ? `${label}: ${detail}` : label);
@@ -23,12 +23,16 @@ expect("split is no longer its own tab", !hrefs.includes("/split"));
 expect("profile is no longer a bottom tab", !hrefs.includes("/profile"));
 expectEq(
   "tabs left of log",
-  NAV_TABS.slice(0, 3)
-    .map((tab) => tab.label)
-    .join("|"),
-  "Home|Calendar|Budget"
+  LEFT_NAV_TABS.map((tab) => tab.label).join("|"),
+  "Home|Calendar"
 );
-expectEq("tab right of log", NAV_TABS.slice(3).map((tab) => tab.label).join("|"), "Chat");
+expectEq(
+  "tabs right of log",
+  RIGHT_NAV_TABS.map((tab) => tab.label).join("|"),
+  "Budget|Chat"
+);
+expectEq("two tabs on each side of log", LEFT_NAV_TABS.length, RIGHT_NAV_TABS.length);
+expectEq("left side width matches the right", LEFT_NAV_TABS.length, 2);
 
 expectEq("home is active on /", activeNavHref("/"), "/");
 expectEq("calendar stays on its route", activeNavHref("/month"), "/month");
@@ -71,8 +75,12 @@ expect("profile route still renders", profilePage.includes("ProfileScreen"));
 expect("profile route has a back affordance", shell.includes('aria-label="Back"'));
 expect("header respects the top safe area", shell.includes("safe-area-inset-top"));
 expect(
-  "log stays between Home Calendar Budget and Chat",
-  shell.includes("NAV_TABS.slice(0, 3)") && shell.includes("NAV_TABS.slice(3)")
+  "log stays between Home Calendar and Budget Chat",
+  shell.includes("LEFT_NAV_TABS") && shell.includes("RIGHT_NAV_TABS")
+);
+expect(
+  "shell does not leave three tabs on the left of log",
+  !shell.includes("NAV_TABS.slice(0, 3)") && !shell.includes("NAV_TABS.slice(3)")
 );
 expect(
   "split deep link redirects to the combined tab",
