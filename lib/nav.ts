@@ -1,4 +1,9 @@
-/** Bottom-nav destinations. The center Log control is an action, not a route. Profile is a header icon, not a tab. */
+/**
+ * Bottom-nav destinations in reading order.
+ * The center Log control is an action, not a route, and sits between these two pairs:
+ * Home, Calendar | Log | Budget, Chat.
+ * Profile is a header icon, not a tab.
+ */
 export const NAV_TABS = [
   { href: "/", label: "Home" },
   { href: "/month", label: "Calendar" },
@@ -7,6 +12,10 @@ export const NAV_TABS = [
 ] as const;
 
 export type NavTabHref = (typeof NAV_TABS)[number]["href"];
+
+/** Two equal-width tabs on each side of the center Log button. */
+export const LEFT_NAV_TABS = NAV_TABS.slice(0, 2);
+export const RIGHT_NAV_TABS = NAV_TABS.slice(2);
 
 /**
  * Highlight a tab only on an exact path match.
