@@ -16,7 +16,10 @@ const root = process.cwd();
 const split = readFileSync(path.join(root, "components/split-screen.tsx"), "utf8");
 const budget = readFileSync(path.join(root, "components/budget-screen.tsx"), "utf8");
 const home = readFileSync(path.join(root, "components/home-screen.tsx"), "utf8");
-const combined = readFileSync(path.join(root, "app/(app)/budget/page.tsx"), "utf8");
+const budgetPage = readFileSync(path.join(root, "app/(app)/budget/page.tsx"), "utf8");
+const combined = budgetPage.includes("<SplitScreen")
+  ? budgetPage
+  : readFileSync(path.join(root, "components/budget-tab.tsx"), "utf8");
 
 expect("split uses shared envelope spend", split.includes("envelopeSpend(insights.categories"));
 expect("split does not recompute from expenses", !split.includes("state.expenses"));
@@ -25,6 +28,7 @@ expect("split shows spent against budget", split.includes("formatCents(spentShow
 expect("split mutes empty envelopes", split.includes("text-muted-foreground/75") && split.includes("Empty this month"));
 expect("split still lists every allocation", split.includes("insights.splitAllocations.map"));
 expect("combined tab still mounts the envelope list", combined.includes("<SplitScreen"));
+expect("budget route still reaches that list", budgetPage.includes("<BudgetTab") || budgetPage.includes("<SplitScreen"));
 expect(
   "combined tab can hide those dollars",
   split.includes("useHideDollars") && split.includes("embedded && hideDollars")

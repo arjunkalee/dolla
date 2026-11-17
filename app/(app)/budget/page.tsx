@@ -1,11 +1,10 @@
-import { BudgetBreakdownScreen } from "@/components/budget-breakdown-screen";
-import { SplitScreen } from "@/components/split-screen";
+import { Suspense } from "react";
+import { BudgetTab } from "@/components/budget-tab";
 
 export default function BudgetPage() {
   return (
-    <div className="space-y-10">
-      <BudgetBreakdownScreen />
-      <SplitScreen embedded />
-    </div>
+    <Suspense fallback={null}>
+      <BudgetTab />
+    </Suspense>
   );
 }
