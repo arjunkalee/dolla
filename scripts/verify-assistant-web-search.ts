@@ -81,8 +81,8 @@ function harness(start?: AiUsageLedger) {
         ledger = mutator(ledger);
         return structuredClone(ledger);
       },
-      appendExchange: async (user, reply, citations) => {
-        saved.push({ user, reply, citations });
+      appendExchange: async (user, reply, exchange) => {
+        saved.push({ user, reply, citations: exchange?.citations });
       },
       streamReply: async (args) => {
         calls.push({ ...args, messages: structuredClone(args.messages) });

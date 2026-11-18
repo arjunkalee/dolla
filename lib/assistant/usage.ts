@@ -57,7 +57,7 @@ export function capReached(spentMicroUsd: number, capMicroUsd: number): boolean 
 export function capBlockMessage(spentMicroUsd: number, capMicroUsd: number): string {
   const spent = formatCapUsd(spentMicroUsd);
   const cap = formatCapUsd(capMicroUsd);
-  return `This month's assistant budget is used up (${spent} of ${cap}). It resets on the 1st, Chicago time. Commands like "log $10 dining" still work. I can't make edits yet.`;
+  return `This month's assistant budget is used up (${spent} of ${cap}). It resets on the 1st, Chicago time. Commands like "log $10 dining" still work.`;
 }
 
 export function normalizeAiUsage(raw: unknown): AiUsageLedger {

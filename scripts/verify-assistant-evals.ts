@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createSessionToken } from "../lib/auth";
 import type { AssistantStreamCall } from "../lib/assistant/handle";
+import { handleApplyRequest, handleUndoRequest } from "../lib/assistant/apply-edit";
 import { handleAssistantRequest } from "../lib/assistant/handle";
 import {
   applyMemoryTool,
@@ -29,9 +30,10 @@ import { ASSISTANT_SYSTEM_PROMPT, cachedSystemPrompt } from "../lib/assistant/pr
 import { SUGGESTED_PROMPTS } from "../lib/assistant/suggestions";
 import { cachedAssistantTools } from "../lib/assistant/tools";
 import { toolsForApiCall } from "../lib/assistant/web-search";
+import { parseChat } from "../lib/chat";
 import { formatCents } from "../lib/money";
 import { realState } from "../lib/seed";
-import type { AppState, ChatMessage } from "../lib/types";
+import type { AppState, ChatMessage, ChatProposal } from "../lib/types";
 import type { TokenUsage } from "../lib/assistant/pricing";
 
 function expect(label: string, cond: unknown, detail = "") {
@@ -92,6 +94,15 @@ function lastToolUse(messages: readonly ModelMessage[]): { name: string } | null
     }
   }
   return null;
+}
+
+function proposalFromBody(body: string): ChatProposal {
+  for (const line of body.split("\n")) {
+    if (!line.startsWith("data: ")) continue;
+    const event = JSON.parse(line.slice(6)) as { type?: string; proposal?: ChatProposal };
+    if (event.type === "proposal" && event.proposal?.id) return event.proposal;
+  }
+  throw new Error("propose did not emit a confirm card");
 }
 
 function lastToolResult(messages: readonly ModelMessage[]): { content: string; isError: boolean } | null {
@@ -427,6 +438,111 @@ async function main() {
   expect("edit refusal", /can.?t make edits yet/i.test(refused.saved[0] ?? ""));
   assertCitedDollars("edit refusal", refused.saved[0] ?? "", "");
   expect("edit refusal did not write", refused.unchanged);
+
+  const editState = realState(NOW);
+  const diningBefore = editState.categories.find((category) => category.id === "dining")?.monthlyBudgetCents;
+  expect("dining budget exists", typeof diningBefore === "number" && diningBefore !== 35_000);
+  expectEq(
+    "parser leaves an unspecific edit for the assistant",
+    parseChat("Please lower the restaurant envelope", editState).type,
+    "unknown"
+  );
+  const proposedEdit = await runPrompt({
+    prompt: "Please lower the restaurant envelope",
+    state: editState,
+    memory: { current: emptyMemory() },
+    respond: (args, round) => {
+      if (round === 1) return toolRound("propose_envelope_amount", { category: "dining", amount: 350 });
+      const toolResult = lastToolResult(args.messages);
+      if (!toolResult || toolResult.isError) throw new Error(toolResult?.content ?? "propose failed");
+      const data = JSON.parse(toolResult.content) as { saved?: boolean; proposed?: boolean };
+      expectEq("propose result is not saved", data.saved, false);
+      expectEq("propose result is a card", data.proposed, true);
+      return textRound(args, "The confirm card is ready. Nothing is saved until you confirm.");
+    },
+  });
+  expect(
+    "propose tool was offered",
+    proposedEdit.calls[0]!.tools.some((tool) => tool.name === "propose_envelope_amount")
+  );
+  expectEq(
+    "propose tool choice",
+    lastToolUse(proposedEdit.calls[1]!.messages)?.name,
+    "propose_envelope_amount"
+  );
+  expect("propose did not write the ledger", proposedEdit.unchanged);
+  expectEq(
+    "dining budget unchanged until confirm",
+    editState.categories.find((category) => category.id === "dining")?.monthlyBudgetCents,
+    diningBefore
+  );
+  const card = proposalFromBody(proposedEdit.body);
+  expectEq("card starts pending", card.status, "pending");
+  expectEq("card tool", card.tool, "propose_envelope_amount");
+  const budgetChange = card.changes.find((change) => change.field === "monthlyBudgetCents");
+  expectEq("card old value matches the ledger", budgetChange?.oldValue, diningBefore);
+  expectEq("card new value is $350", budgetChange?.newValue, 35_000);
+  expectEq(
+    "reply waits for confirm",
+    proposedEdit.saved[0],
+    "The confirm card is ready. Nothing is saved until you confirm."
+  );
+  assertNoSecrets("propose", proposedEdit.logs);
+
+  const ledgerBox = {
+    state: {
+      ...structuredClone(editState),
+      chatMessages: [
+        ...editState.chatMessages,
+        {
+          id: "eval-card",
+          role: "dolla" as const,
+          text: card.summary,
+          createdAt: NOW.toISOString(),
+          proposals: [card],
+        },
+      ],
+    },
+  };
+  const updateLedger = async (mutator: (current: AppState) => AppState) => {
+    ledgerBox.state = mutator(ledgerBox.state);
+    return ledgerBox.state;
+  };
+  const confirmToken = await createSessionToken();
+  const applied = await handleApplyRequest({
+    sessionToken: confirmToken,
+    proposalId: card.id,
+    now: NOW,
+    update: updateLedger,
+    ids: { auditId: () => "audit-eval", expenseId: () => "exp-eval" },
+  });
+  expectEq("confirm status", applied.status, 200);
+  expectEq(
+    "confirm writes the new budget",
+    ledgerBox.state.categories.find((category) => category.id === "dining")?.monthlyBudgetCents,
+    35_000
+  );
+  const audit = ledgerBox.state.assistantAudit?.find((entry) => entry.id === "audit-eval");
+  expectEq("audit source", audit?.source, "assistant");
+  expectEq("audit tool", audit?.tool, "propose_envelope_amount");
+  expectEq("audit before matches the old budget", audit?.before[0]?.value, diningBefore);
+  expectEq("audit after matches the new budget", audit?.after[0]?.value, 35_000);
+  const undone = await handleUndoRequest({
+    sessionToken: confirmToken,
+    auditId: "audit-eval",
+    now: NOW,
+    update: updateLedger,
+  });
+  expectEq("undo status", undone.status, 200);
+  expectEq(
+    "undo restores the old budget",
+    ledgerBox.state.categories.find((category) => category.id === "dining")?.monthlyBudgetCents,
+    diningBefore
+  );
+  expect(
+    "undo stamps the audit entry",
+    Boolean(ledgerBox.state.assistantAudit?.find((entry) => entry.id === "audit-eval")?.undoneAt)
+  );
 
   const memory: MemoryBox = { current: emptyMemory() };
   const remembered = await runPrompt({
