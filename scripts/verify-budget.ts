@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { CategoryExpenseList } from "../components/budget-category-screen";
 import {
   BUDGET_SLICE_COLORS,
   budgetBreakdown,
@@ -9,6 +12,14 @@ import {
   largestRemainderPercents,
   pieShowsOutsideLabel,
 } from "../lib/budget-share";
+import {
+  budgetCategoryHref,
+  categoryDrilldown,
+  categoryDrilldownSummary,
+  monthCategoryExpenses,
+  sumExpenseCents,
+  type CategoryDrilldown,
+} from "../lib/category-expenses";
 import { formatCents } from "../lib/money";
 import { parseHideDollars, serializeHideDollars } from "../lib/hide-dollars";
 import { computeInsights } from "../lib/plan";
@@ -197,6 +208,8 @@ const shareLib = readFileSync(path.join(root, "lib/budget-share.ts"), "utf8");
 const hideLib = readFileSync(path.join(root, "lib/hide-dollars.ts"), "utf8");
 const nav = readFileSync(path.join(root, "lib/nav.ts"), "utf8");
 const page = readFileSync(path.join(root, "app/(app)/budget/page.tsx"), "utf8");
+const tab = readFileSync(path.join(root, "components/budget-tab.tsx"), "utf8");
+const categoryScreen = readFileSync(path.join(root, "components/budget-category-screen.tsx"), "utf8");
 const splitPage = readFileSync(path.join(root, "app/(app)/split/page.tsx"), "utf8");
 const splitScreen = readFileSync(path.join(root, "components/split-screen.tsx"), "utf8");
 
@@ -211,8 +224,10 @@ expect("toggle uses an eye icon", screen.includes("EyeOff") && screen.includes("
 expect("pie center, tooltip, and labels follow the toggle", screen.includes("budgetCenterText") && screen.includes("budgetSliceCaption") && screen.includes("pieShowsOutsideLabel"));
 expect("choice is stored in localStorage", hideLib.includes("localStorage") && hideLib.includes("dolla.budget.hideDollars"));
 expect("percentage helper is still the only apportionment", shareLib.includes("export function largestRemainderPercents"));
-expect("page mounts the breakdown", page.includes("BudgetBreakdownScreen"));
-expect("page mounts the spent-vs-budget list", page.includes("SplitScreen"));
+expect("page mounts the budget tab", page.includes("<BudgetTab"));
+expect("tab mounts the breakdown", tab.includes("<BudgetBreakdownScreen"));
+expect("tab mounts the spent-vs-budget list", tab.includes("<SplitScreen"));
+expect("tab opens a category drilldown", tab.includes("<BudgetCategoryScreen"));
 expect("nav has a Budget tab", nav.includes('label: "Budget"') && nav.includes('href: "/budget"'));
 expect("nav dropped the separate Split tab", !nav.includes('href: "/split"'));
 expect("old split route redirects to the combined tab", splitPage.includes('redirect("/budget")'));
@@ -229,4 +244,129 @@ expect(
   !shareLib.includes("1432") && !shareLib.includes("2782") && !shareLib.includes("5542") && !shareLib.includes("2760")
 );
 
+expect("pie and list open a category", screen.includes("budgetCategoryHref(") && screen.includes("onOpen"));
+expect("list rows navigate to the category", screen.includes("<Link") && screen.includes("budgetCategoryHref(share.id)"));
+expect("drilldown reads this month's expenses", categoryScreen.includes("categoryDrilldown("));
+expect("drilldown shows merchant, date, and amount", categoryScreen.includes("row.merchant") && categoryScreen.includes("formatLongDate(row.date)") && categoryScreen.includes("formatCents(row.amountCents)"));
+expect("drilldown shows the category total", categoryScreen.includes("drilldown.totalCents") && categoryScreen.includes("drilldown.totalLabel"));
+expect(
+  "drilldown can go back to the budget",
+  categoryScreen.includes('aria-label="Back to budget"') &&
+    categoryScreen.includes("router.back()") &&
+    categoryScreen.includes('router.replace("/budget")')
+);
+expect("drilldown follows the hide-dollars toggle", categoryScreen.includes("useHideDollars") && categoryScreen.includes("Dollar amounts hidden"));
+expectEq("category href stays on the budget tab", budgetCategoryHref("groceries"), "/budget?category=groceries");
+
+const groceries = breakdown.shares.find((share) => share.id === "groceries");
+expect("groceries share exists for the drilldown", groceries);
+const drillExpenses = [
+  expense("late-same-day", "groceries", "2026-09-20", "2026-09-20T18:00:00.000Z", "Whole Foods", 4_210),
+  expense("early-same-day", "groceries", "2026-09-20", "2026-09-20T12:00:00.000Z", "  ", 575),
+  expense("older", "groceries", "2026-09-02", "2026-09-02T15:00:00.000Z", "Shell", 3_000),
+  expense("october", "groceries", "2026-10-01", "2026-10-01T15:00:00.000Z", "Jewel", 9_999),
+  expense("dining", "dining", "2026-09-18", "2026-09-18T15:00:00.000Z", "Cafe", 1_200),
+];
+const monthRows = monthCategoryExpenses(drillExpenses, "groceries", "2026-09");
+expectEq("newest day first", monthRows.map((row) => row.id).join(","), "late-same-day,early-same-day,older");
+expectEq("same-day order follows createdAt", monthRows[0]?.id, "late-same-day");
+expectEq("other months stay out", monthRows.some((row) => row.id === "october"), false);
+expectEq("other categories stay out", monthRows.some((row) => row.id === "dining"), false);
+expectEq("row total matches the listed charges", sumExpenseCents(monthRows), 4_210 + 575 + 3_000);
+
+const groceriesDrill = categoryDrilldown({
+  categoryId: "groceries",
+  monthKey: "2026-09",
+  expenses: drillExpenses,
+  share: groceries ?? null,
+});
+expect("groceries drilldown is the envelope", groceriesDrill.known && !groceriesDrill.invest);
+expectEq("blank merchant gets a label", groceriesDrill.rows[1]?.merchant, "Purchase");
+expectEq("category total is the sum of the rows", groceriesDrill.totalCents, 4_210 + 575 + 3_000);
+expectEq("spent label", groceriesDrill.totalLabel, "Spent this month");
+expectEq(
+  "summary keeps the envelope next to the count",
+  categoryDrilldownSummary(groceriesDrill, false),
+  `3 purchases · Envelope ${formatCents(groceries?.cents ?? 0)} · ${groceries?.percent ?? 0}%`
+);
+expect(
+  "hidden summary has no dollars",
+  !categoryDrilldownSummary(groceriesDrill, true).includes("$") &&
+    categoryDrilldownSummary(groceriesDrill, true).includes("3 purchases")
+);
+
+const emptyDrill = categoryDrilldown({
+  categoryId: "gas",
+  monthKey: "2026-09",
+  expenses: drillExpenses,
+  share: gasShare ?? null,
+});
+expectEq("empty category has no rows", emptyDrill.rows.length, 0);
+expectEq("empty total is zero", emptyDrill.totalCents, 0);
+expect("empty copy names the category", emptyDrill.emptyLabel.includes("Gas") || emptyDrill.emptyLabel.includes(gasShare?.name ?? "Gas"));
+
+const investShare = breakdown.shares.find((share) => share.id === "invest") ?? null;
+const investDrill = categoryDrilldown({
+  categoryId: "invest",
+  monthKey: "2026-09",
+  expenses: drillExpenses,
+  share: investShare,
+});
+expect("invest is not a purchase list", investDrill.invest && investDrill.rows.length === 0);
+expectEq("invest total is the leftover slice", investDrill.totalCents, investShare?.cents ?? -1);
+expectEq("invest label", investDrill.totalLabel, "Left to invest");
+expect(
+  "invest summary has no dollars",
+  !categoryDrilldownSummary(investDrill, false).includes("$") &&
+    categoryDrilldownSummary(investDrill, false).includes("left after the envelopes")
+);
+expectEq(
+  "unknown category",
+  categoryDrilldown({ categoryId: "nope", monthKey: "2026-09", expenses: drillExpenses, share: null }).known,
+  false
+);
+
+function renderList(drilldown: CategoryDrilldown, hideDollars: boolean) {
+  return renderToStaticMarkup(
+    createElement(CategoryExpenseList, {
+      monthLabel: "September 2026",
+      drilldown,
+      hideDollars,
+      onBack: () => undefined,
+      onToggleDollars: () => undefined,
+    })
+  );
+}
+
+const html = renderList(groceriesDrill, false);
+const wholeFoodsAt = html.indexOf("Whole Foods");
+const shellAt = html.indexOf("Shell");
+expect("rendered list shows the merchant", wholeFoodsAt >= 0);
+expect("rendered list is newest first", wholeFoodsAt < shellAt);
+expect("rendered list shows the date", html.includes("Sep 20") && html.includes("Sep 2"));
+expect("rendered list shows the amount", html.includes(formatCents(4_210)));
+expect("rendered total is the category sum", html.includes(formatCents(4_210 + 575 + 3_000)));
+expect("rendered list offers a way back", html.includes("Back to budget") && html.includes("Budget"));
+expect("rendered rows are tall enough to tap", html.includes("min-h-14"));
+
+const hiddenHtml = renderList(groceriesDrill, true);
+expect("hidden drilldown keeps the merchant", hiddenHtml.includes("Whole Foods"));
+expect("hidden drilldown drops dollar amounts", !hiddenHtml.includes("$"));
+expect("hidden drilldown says amounts are hidden", hiddenHtml.includes("Dollar amounts hidden"));
+
+const investHtml = renderList(investDrill, false);
+expect("invest drilldown names the leftover", investHtml.includes("Left to invest"));
+expect("invest drilldown does not invent purchases", !investHtml.includes("Whole Foods") && !investHtml.includes("Shell"));
+
 console.log("budget breakdown checks passed");
+
+function expense(
+  id: string,
+  categoryId: "groceries" | "dining" | "gas",
+  date: string,
+  createdAt: string,
+  merchant: string,
+  amountCents: number
+) {
+  return { id, categoryId, date, createdAt, merchant, amountCents };
+}

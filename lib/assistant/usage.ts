@@ -132,7 +132,14 @@ export type MonthSpend = {
   capUsd: number;
   monthSpendMicroUsd: number;
   capMicroUsd: number;
+  requests: number;
+  /** First day of the Chicago month. The cap starts over on this date. */
+  resetOn: string;
 };
+
+export function usageResetOn(month: string): string {
+  return `${month}-01`;
+}
 
 export function monthSpendFromLedger(
   ledger: AiUsageLedger,
@@ -141,13 +148,16 @@ export function monthSpendFromLedger(
 ): MonthSpend {
   const key = usageMonthKey(now);
   const capMicroUsd = monthlyCapMicroUsd(env);
-  const monthSpendMicroUsd = ledger.months[key]?.costMicroUsd ?? 0;
+  const month = ledger.months[key];
+  const monthSpendMicroUsd = month?.costMicroUsd ?? 0;
   return {
     monthKey: key,
     monthSpendMicroUsd,
     capMicroUsd,
     monthSpendUsd: microUsdToNumber(monthSpendMicroUsd),
     capUsd: microUsdToNumber(capMicroUsd),
+    requests: month?.requests ?? 0,
+    resetOn: usageResetOn(key),
   };
 }
 

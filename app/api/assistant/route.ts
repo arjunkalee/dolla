@@ -23,6 +23,8 @@ export async function GET() {
     monthKey: spend.monthKey,
     monthSpendUsd: spend.monthSpendUsd,
     capUsd: spend.capUsd,
+    requests: spend.requests,
+    resetOn: spend.resetOn,
   });
 }
 

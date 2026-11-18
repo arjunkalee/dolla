@@ -33,10 +33,14 @@ export function trimHistory(messages: ChatMessage[], limit = HISTORY_LIMIT): Ass
 export function buildModelMessages(
   history: ChatMessage[],
   snapshot: string,
-  userText: string
+  userText: string,
+  summary = ""
 ): AssistantTurn[] {
   const prior = trimHistory(history);
-  const content = `Context (orientation only — do not quote these dollars; call a tool and cite that result. Not a request to edit):\n${snapshot}\n\nQuestion:\n${userText.trim()}`;
+  const earlier = summary.trim()
+    ? `Earlier conversation (summary of older messages — not a source of dollar amounts; call a tool):\n${summary.trim()}\n\n`
+    : "";
+  const content = `${earlier}Context (orientation only — do not quote these dollars; call a tool and cite that result. Not a request to edit):\n${snapshot}\n\nQuestion:\n${userText.trim()}`;
   const last = prior[prior.length - 1];
   if (last?.role === "user") {
     return [
