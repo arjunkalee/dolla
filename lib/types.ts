@@ -101,9 +101,60 @@ export type AppState = {
   splitAllocations: SplitAllocation[];
   chatMessages: ChatMessage[];
   chatPending: "real" | "empty" | null;
+  /** Applied assistant edits, stored in the same durable ledger record as the money. */
+  assistantAudit?: AssistantAuditEntry[];
   hasSampleData: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ProposalScalar = string | number | boolean | null;
+
+export type ProposalStatus = "pending" | "applied" | "cancelled" | "undone" | "stale";
+
+/** One field on a confirm card. Apply checks `oldValue` against the ledger before writing `newValue`. */
+export type ProposalChange = {
+  entity: string;
+  entityLabel: string;
+  field: string;
+  fieldLabel: string;
+  oldValue: ProposalScalar;
+  newValue: ProposalScalar;
+  oldLabel: string;
+  newLabel: string;
+};
+
+export type ChatProposal = {
+  id: string;
+  tool: string;
+  summary: string;
+  status: ProposalStatus;
+  auditId?: string;
+  changes: ProposalChange[];
+};
+
+export type AssistantAuditValue = {
+  entity: string;
+  field: string;
+  value: ProposalScalar;
+};
+
+/** One applied assistant edit. Undo restores `before` only while the ledger still matches `after`. */
+export type AssistantAuditEntry = {
+  id: string;
+  at: string;
+  tool: string;
+  summary: string;
+  before: AssistantAuditValue[];
+  after: AssistantAuditValue[];
+  source: "assistant";
+  undoneAt?: string;
+};
+
+/** A source link from web search. Titles and https URLs only — no page text. */
+export type ChatCitation = {
+  url: string;
+  title: string;
 };
 
 export type ChatMessage = {
@@ -111,13 +162,8 @@ export type ChatMessage = {
   role: "user" | "dolla";
   text: string;
   createdAt: string;
+  proposals?: ChatProposal[];
   citations?: ChatCitation[];
-};
-
-/** A source link from web search. Titles and https URLs only — no page text. */
-export type ChatCitation = {
-  url: string;
-  title: string;
 };
 
 export type FormulaRow = {
