@@ -1,6 +1,7 @@
 import { endOfMonth, formatAsOf, monthKey, startOfMonth, todayISO } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import type { AppState, Category, CategoryId, Expense } from "@/lib/types";
+import { HOUR_CACHE_CONTROL } from "./prompt";
 
 /**
  * Read-only lookups over an already loaded ledger.
@@ -56,7 +57,7 @@ export type AssistantTool = {
     properties: Record<string, unknown>;
     additionalProperties: false;
   };
-  cache_control?: { type: "ephemeral" };
+  cache_control?: typeof HOUR_CACHE_CONTROL;
 };
 
 const monthProperty = {
@@ -148,7 +149,7 @@ const TOOL_DEFINITIONS: readonly AssistantTool[] = [
 export function cachedAssistantTools(): AssistantTool[] {
   return TOOL_DEFINITIONS.map((tool, index) =>
     index === TOOL_DEFINITIONS.length - 1
-      ? { ...tool, cache_control: { type: "ephemeral" } }
+      ? { ...tool, cache_control: HOUR_CACHE_CONTROL }
       : { ...tool }
   );
 }

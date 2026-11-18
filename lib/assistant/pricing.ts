@@ -1,8 +1,10 @@
 /**
  * USD prices per million tokens, stored as micro-USD (1 USD = 1_000_000).
- * Anthropic list prices as of October 2026. Cache writes are the 5-minute
- * and 1-hour ephemeral tiers. `input` excludes tokens reported as cache
- * writes or cache reads — that is how the Messages API usage object works.
+ * Anthropic list prices as of October 2026. A 5-minute cache write is
+ * 1.25× base input and a 1-hour cache write is 2× base input. Assistant
+ * breakpoints use the 1-hour tier, so those writes must use the 2× rate
+ * or DOLLA_AI_MONTHLY_CAP_USD undercounts. `input` excludes tokens reported
+ * as cache writes or cache reads — that is how the Messages API usage object works.
  */
 export type ModelPrice = {
   inputPerMTokMicroUsd: number;
@@ -13,20 +15,8 @@ export type ModelPrice = {
 };
 
 export const MODEL_PRICES: Record<string, ModelPrice> = {
-  "claude-sonnet-5-5": {
-    inputPerMTokMicroUsd: 2_000_000,
-    outputPerMTokMicroUsd: 10_000_000,
-    cacheWrite5mPerMTokMicroUsd: 2_500_000,
-    cacheWrite1hPerMTokMicroUsd: 4_000_000,
-    cacheReadPerMTokMicroUsd: 100_000,
-  },
-  "claude-sonnet-5": {
-    inputPerMTokMicroUsd: 2_000_000,
-    outputPerMTokMicroUsd: 10_000_000,
-    cacheWrite5mPerMTokMicroUsd: 2_500_000,
-    cacheWrite1hPerMTokMicroUsd: 4_000_000,
-    cacheReadPerMTokMicroUsd: 200_000,
-  },
+  "claude-sonnet-5-5": modelPrice(2_000_000, 10_000_000, 100_000),
+  "claude-sonnet-5": modelPrice(2_000_000, 10_000_000, 200_000),
   "claude-sonnet-4-6": sonnet46Price(),
   "claude-sonnet-4-5": sonnet46Price(),
   "claude-sonnet-4-5-20250929": sonnet46Price(),
@@ -36,12 +26,21 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
 export const FALLBACK_MODEL_PRICE: ModelPrice = sonnet46Price();
 
 function sonnet46Price(): ModelPrice {
+  return modelPrice(3_000_000, 15_000_000, 300_000);
+}
+
+/** Cache writes follow the published multipliers: 1.25× for 5 minutes, 2× for 1 hour. */
+function modelPrice(
+  inputPerMTokMicroUsd: number,
+  outputPerMTokMicroUsd: number,
+  cacheReadPerMTokMicroUsd: number
+): ModelPrice {
   return {
-    inputPerMTokMicroUsd: 3_000_000,
-    outputPerMTokMicroUsd: 15_000_000,
-    cacheWrite5mPerMTokMicroUsd: 3_750_000,
-    cacheWrite1hPerMTokMicroUsd: 6_000_000,
-    cacheReadPerMTokMicroUsd: 300_000,
+    inputPerMTokMicroUsd,
+    outputPerMTokMicroUsd,
+    cacheWrite5mPerMTokMicroUsd: Math.round((inputPerMTokMicroUsd * 5) / 4),
+    cacheWrite1hPerMTokMicroUsd: inputPerMTokMicroUsd * 2,
+    cacheReadPerMTokMicroUsd,
   };
 }
 
@@ -113,11 +112,13 @@ export function usageFromAnthropic(usage: {
       webSearchRequests,
     };
   }
+  // Breakpoints request ttl "1h". A response that omits the TTL split still
+  // created a 1-hour entry; billing it at the 5-minute rate would undercount the cap.
   return {
     inputTokens: nonNeg(usage.input_tokens),
     outputTokens: nonNeg(usage.output_tokens),
-    cacheCreation5mTokens: nonNeg(usage.cache_creation_input_tokens),
-    cacheCreation1hTokens: 0,
+    cacheCreation5mTokens: 0,
+    cacheCreation1hTokens: nonNeg(usage.cache_creation_input_tokens),
     cacheReadTokens: nonNeg(usage.cache_read_input_tokens),
     webSearchRequests,
   };
