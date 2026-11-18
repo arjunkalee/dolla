@@ -196,7 +196,11 @@ async function main() {
   expectEq("wired max uses", searchTool && "max_uses" in searchTool ? searchTool.max_uses : 0, WEB_SEARCH_MAX_USES);
   expect(
     "client cache breakpoint stays on the last read tool",
-    readTool != null && "cache_control" in readTool && readTool.cache_control?.type === "ephemeral" && !(searchTool && "cache_control" in searchTool)
+    readTool != null &&
+      "cache_control" in readTool &&
+      readTool.cache_control?.type === "ephemeral" &&
+      readTool.cache_control?.ttl === "1h" &&
+      !(searchTool && "cache_control" in searchTool)
   );
   expectEq("client tool count is unchanged", wired.length, cachedAssistantTools().length + 1);
 

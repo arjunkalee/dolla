@@ -333,6 +333,7 @@ async function main() {
   const wrapped = withMemoryTools(baseTools);
   expectEq("cache breakpoint stays on the last tool", wrapped.at(-1)?.name, baseTools.at(-1)?.name);
   expectEq("last tool still cached", wrapped.at(-1)?.cache_control?.type, "ephemeral");
+  expectEq("last tool cache ttl", wrapped.at(-1)?.cache_control?.ttl, "1h");
   const wrappedNames = wrapped.map((tool) => String(tool.name));
   expect("remember tool is available", wrappedNames.includes("remember_fact"));
   expect(
@@ -348,6 +349,8 @@ async function main() {
   const blocks = cachedSystemPrompt(["I get paid on Fridays"]);
   expectEq("standing prompt stays the first cached block", blocks[0]?.text, ASSISTANT_SYSTEM_PROMPT);
   expectEq("memory block is cached", blocks[1]?.cache_control.type, "ephemeral");
+  expectEq("standing prompt cache ttl", blocks[0]?.cache_control.ttl, "1h");
+  expectEq("memory block cache ttl", blocks[1]?.cache_control.ttl, "1h");
   expect("memory block lists the fact", blocks[1]?.text.includes("I get paid on Fridays"));
   expect("memory block does not invent a balance", !blocks[1]?.text.includes("$"));
   expect("empty memory still teaches remember_fact", cachedSystemPrompt()[1]?.text.includes("remember_fact"));

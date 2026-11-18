@@ -211,7 +211,7 @@ const MEMORY_TOOLS = [
 ];
 
 /** Insert memory tools before the cache breakpoint so the last tool stays cached. */
-export function withMemoryTools<T extends { name: string; cache_control?: { type: "ephemeral" } }>(
+export function withMemoryTools<T extends { name: string; cache_control?: { type: "ephemeral"; ttl?: "1h" } }>(
   tools: readonly T[]
 ): T[] {
   const memory = MEMORY_TOOLS as unknown as T[];

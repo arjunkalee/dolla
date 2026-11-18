@@ -2,6 +2,7 @@ import { endOfMonth, formatAsOf, monthKey, startOfMonth, todayISO } from "@/lib/
 import { formatCents } from "@/lib/money";
 import type { AppState, Category, CategoryId, ChatProposal, Expense } from "@/lib/types";
 import { EDIT_TOOL_DEFINITIONS, EDIT_TOOL_NAMES, executeEditTool } from "./proposals";
+import { HOUR_CACHE_CONTROL } from "./prompt";
 
 /**
  * Read-only lookups over an already loaded ledger.
@@ -57,7 +58,7 @@ export type AssistantTool = {
     properties: Record<string, unknown>;
     additionalProperties: false;
   };
-  cache_control?: { type: "ephemeral" };
+  cache_control?: typeof HOUR_CACHE_CONTROL;
 };
 
 const monthProperty = {
@@ -145,11 +146,11 @@ const TOOL_DEFINITIONS: readonly AssistantTool[] = [
   },
 ];
 
-/** Stable tool list. Read tools stay first. The last definition carries the prompt-cache breakpoint. */
+/** Stable tool list. Read tools stay first. The last client tool carries the 1-hour cache breakpoint. */
 export function cachedAssistantTools(): AssistantTool[] {
   const tools: AssistantTool[] = [...TOOL_DEFINITIONS, ...EDIT_TOOL_DEFINITIONS];
   return tools.map((tool, index) =>
-    index === tools.length - 1 ? { ...tool, cache_control: { type: "ephemeral" } } : { ...tool }
+    index === tools.length - 1 ? { ...tool, cache_control: HOUR_CACHE_CONTROL } : { ...tool }
   );
 }
 

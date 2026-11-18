@@ -6,6 +6,8 @@ import { handleAssistantRequest } from "../lib/assistant/handle";
 import { buildModelMessages } from "../lib/assistant/messages";
 import { HISTORY_LIMIT, MAX_OUTPUT_TOKENS, modelCallOptions, resolveAssistantModel } from "../lib/assistant/models";
 import {
+  FALLBACK_MODEL_PRICE,
+  MODEL_PRICES,
   costMicroUsd,
   priceForModel,
   usageFromAnthropic,
@@ -159,6 +161,23 @@ async function main() {
     costMicroUsd(sampleUsage({ cacheReadTokens: 1_000_000 }), sonnet55) <
       costMicroUsd(sampleUsage({ inputTokens: 1_000_000 }), sonnet55)
   );
+  expect(
+    "cache read is cheaper than a 1h write",
+    costMicroUsd(sampleUsage({ cacheReadTokens: 1_000_000 }), sonnet55) <
+      costMicroUsd(sampleUsage({ cacheCreation1hTokens: 1_000_000 }), sonnet55)
+  );
+  for (const [model, price] of [...Object.entries(MODEL_PRICES), ["fallback", FALLBACK_MODEL_PRICE] as const]) {
+    expectEq(
+      `${model} 5m write is 1.25x base input`,
+      price.cacheWrite5mPerMTokMicroUsd,
+      (price.inputPerMTokMicroUsd * 5) / 4
+    );
+    expectEq(
+      `${model} 1h write is 2x base input`,
+      price.cacheWrite1hPerMTokMicroUsd,
+      price.inputPerMTokMicroUsd * 2
+    );
+  }
   expectEq(
     "mixed sonnet 5.5 request",
     costMicroUsd(
@@ -194,6 +213,19 @@ async function main() {
   expectEq("1h cache tokens", split.cacheCreation1hTokens, 2);
   expectEq("uncached input stays separate", split.inputTokens, 12);
   expectEq("cache read tokens", split.cacheReadTokens, 7);
+
+  const undifferentiated = usageFromAnthropic({
+    cache_creation_input_tokens: 1_000_000,
+    cache_read_input_tokens: 8,
+  });
+  expectEq("missing ttl split counts as a 1h write", undifferentiated.cacheCreation1hTokens, 1_000_000);
+  expectEq("missing ttl split is not a 5m write", undifferentiated.cacheCreation5mTokens, 0);
+  expectEq("cache read still counts without a split", undifferentiated.cacheReadTokens, 8);
+  expectEq(
+    "missing ttl split is billed at 2x base input",
+    costMicroUsd({ ...undifferentiated, cacheReadTokens: 0 }, sonnet55),
+    sonnet55.inputPerMTokMicroUsd * 2
+  );
 
   expectEq("default cap is $10", monthlyCapMicroUsd({}), 10_000_000);
   expectEq("cap env override", monthlyCapMicroUsd({ DOLLA_AI_MONTHLY_CAP_USD: "2" }), 2_000_000);
@@ -317,6 +349,8 @@ async function main() {
   expectEq("model id", call.model, "claude-sonnet-5-5");
   expectEq("max tokens", call.maxTokens, MAX_OUTPUT_TOKENS);
   expectEq("system cache", call.system[0]?.cache_control.type, "ephemeral");
+  expectEq("system cache ttl", call.system[0]?.cache_control.ttl, "1h");
+  expectEq("memory block cache ttl", call.system[1]?.cache_control.ttl, "1h");
   expectEq("system text is the prompt", call.system[0]?.text, ASSISTANT_SYSTEM_PROMPT);
   expect("snapshot is not in the system prompt", !call.system[0]?.text.includes("SnapshotOnlyCafe"));
   const lastContent = call.messages.at(-1)?.content;
@@ -336,6 +370,7 @@ async function main() {
     })
   );
   expectEq("last tool is cached", call.tools.at(-1)?.cache_control?.type, "ephemeral");
+  expectEq("last tool cache ttl", call.tools.at(-1)?.cache_control?.ttl, "1h");
   expect(
     "earlier tools are outside the cache breakpoint",
     call.tools.slice(0, -1).every((tool) => tool.cache_control == null)

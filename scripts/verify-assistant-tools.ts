@@ -196,6 +196,7 @@ async function main() {
     READ_TOOL_NAMES.join(",")
   );
   expectEq("last tool cached", tools.at(-1)?.cache_control?.type, "ephemeral");
+  expectEq("last tool cache ttl", tools.at(-1)?.cache_control?.ttl, "1h");
   expect(
     "only the last tool is a cache breakpoint",
     tools.slice(0, -1).every((tool) => tool.cache_control == null)
@@ -374,6 +375,10 @@ async function main() {
   expectEq("tool result ignores september", diningData.envelopes[0]?.spentCents, 4_500);
   expectEq("both rounds share the cached tools", JSON.stringify(box.calls[0]?.tools), JSON.stringify(box.calls[1]?.tools));
   expectEq("system block stays cached", box.calls[0]?.system[0]?.cache_control.type, "ephemeral");
+  expect(
+    "system blocks use the 1h cache",
+    box.calls[0]?.system.every((block) => block.cache_control.ttl === "1h")
+  );
   const month = box.ledger().months["2026-10"];
   expectEq("each round counts as a request", month?.requests, 2);
   expectEq("input tokens from both rounds", month?.inputTokens, 150);
