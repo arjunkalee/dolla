@@ -19,7 +19,11 @@ import {
   type ToolOutcome,
 } from "../lib/assistant/tools";
 import { emptyAiUsage, emptyMonth, type AiUsageLedger } from "../lib/assistant/usage";
+import { todayISO } from "../lib/dates";
+import { markBillsPastDuePaid } from "../lib/freshness";
 import { formatCents } from "../lib/money";
+import { NAV_TABS } from "../lib/nav";
+import { computeInsights } from "../lib/plan";
 import { realState } from "../lib/seed";
 import type { AppState, Expense } from "../lib/types";
 
@@ -201,6 +205,13 @@ async function main() {
     "only the last tool is a cache breakpoint",
     tools.slice(0, -1).every((tool) => tool.cache_control == null)
   );
+  const overviewTool = tools.find((tool) => tool.name === "get_app_overview");
+  expect("overview tool is offered", overviewTool);
+  expect("overview tool takes no inputs", JSON.stringify(overviewTool?.input_schema.properties) === "{}");
+  expect(
+    "overview tool is not the cache breakpoint",
+    overviewTool?.cache_control == null && tools.at(-1)?.name !== "get_app_overview"
+  );
   for (const tool of tools) {
     expect(`${tool.name} has a description`, (tool.description?.length ?? 0) > 40);
     expect(`${tool.name} schema is an object`, tool.input_schema.type === "object");
@@ -304,6 +315,125 @@ async function main() {
   expectEq("checking cents", checking.checkingCents, 495_201);
   expectEq("checking dollars", checking.checking, formatCents(495_201));
 
+  const today = todayISO(NOW);
+  const settled = markBillsPastDuePaid(state, today, NOW.toISOString()).state;
+  const insights = computeInsights(settled, today, { backend: "file", durable: true, label: "test" });
+  const overview = payload(state, "get_app_overview", {}) as {
+    month: { label: string; totalSpent: string; envelopes: Array<{ name: string; remaining: string }> };
+    paycheck: { nextPayday: string; net: string; split: { envelopes: string; bills: string; invest: string } };
+    bills: { upcoming: Array<{ name: string; status: string }>; recentlyPaid: Array<{ name: string; status: string }> };
+    recent: Array<{ date: string; merchant: string; amount: string; category: string }>;
+    app: { nav: string };
+  };
+  expectEq("overview month label", overview.month.label, insights.monthLabel);
+  expectEq("overview total spent", overview.month.totalSpent, formatCents(insights.monthSpentCents));
+  expectEq("overview total spent fixture", overview.month.totalSpent, formatCents(12_500));
+  const overviewDining = overview.month.envelopes.find((row) => row.name === "Restaurant / dining");
+  expectEq("overview dining left", overviewDining?.remaining, formatCents(left));
+  expectEq("overview next payday", overview.paycheck.nextPayday, insights.nextPayday);
+  expectEq("overview paycheck net", overview.paycheck.net, formatCents(insights.paycheckNetCents));
+  const plannedEnvelopes = insights.splitAllocations.reduce((sum, row) => sum + row.cents, 0);
+  expectEq("overview split envelopes", overview.paycheck.split.envelopes, formatCents(plannedEnvelopes));
+  expectEq("overview split bills", overview.paycheck.split.bills, formatCents(insights.billsAssignedThisCheckCents));
+  expectEq("overview split invest", overview.paycheck.split.invest, formatCents(insights.splitPlayLeftoverCents));
+  expectEq("past-due bills are not upcoming", overview.bills.upcoming.length, 0);
+  expect("past-due bills count as paid", overview.bills.recentlyPaid.length === state.bills.length);
+  expect(
+    "paid bills use the paid status",
+    overview.bills.recentlyPaid.every((bill) => bill.status === "paid")
+  );
+  expectEq("newest recent expense", overview.recent[0]?.merchant, "Jewel Osco");
+  expectEq("recent category", overview.recent[0]?.category, "Groceries");
+  expect("recent includes an older month", overview.recent.some((row) => row.date.startsWith("2026-09")));
+  const overviewBlob = JSON.stringify(overview);
+  expect("overview omits the checking balance", !overviewBlob.includes(formatCents(state.checkingCents)));
+  expect("overview has no checking field", !overviewBlob.includes("checking"));
+  expect("overview has no pin", !/\bpin\b/i.test(overviewBlob));
+  expect("overview stays compact", overviewBlob.length < 8_000);
+  for (const tab of NAV_TABS) {
+    expect(`overview names ${tab.label}`, overviewBlob.includes(tab.label));
+  }
+  for (const label of ["Log", "Profile", "Split"]) {
+    expect(`overview names ${label}`, overviewBlob.includes(label));
+  }
+
+  const mixed = ledger();
+  const [past, dueToday, future] = mixed.bills;
+  mixed.bills = [
+    { ...past!, name: "Past Card", dueDate: "2026-10-14", paid: false },
+    { ...dueToday!, name: "Due Today", dueDate: "2026-10-15", paid: false },
+    { ...future!, name: "Future Rent", dueDate: "2026-11-01", paid: false },
+  ];
+  mixed.splitAllocations = mixed.splitAllocations.map((row) =>
+    row.categoryId === "groceries" ? { ...row, cents: 5_000, optedIn: true } : row
+  );
+  const mixedInsights = computeInsights(
+    markBillsPastDuePaid(mixed, today, NOW.toISOString()).state,
+    today,
+    { backend: "file", durable: true, label: "test" }
+  );
+  const mixedOverview = payload(mixed, "get_app_overview", {}) as typeof overview;
+  expect(
+    "due today stays upcoming",
+    mixedOverview.bills.upcoming.some((bill) => bill.name === "Due Today" && bill.status === "upcoming")
+  );
+  expect(
+    "future bill stays upcoming",
+    mixedOverview.bills.upcoming.some((bill) => bill.name === "Future Rent" && bill.status === "upcoming")
+  );
+  expect(
+    "yesterday counts as paid",
+    mixedOverview.bills.recentlyPaid.some((bill) => bill.name === "Past Card" && bill.status === "paid") &&
+      mixedOverview.bills.upcoming.every((bill) => bill.name !== "Past Card")
+  );
+  expectEq(
+    "mixed split envelopes follow the plan",
+    mixedOverview.paycheck.split.envelopes,
+    formatCents(mixedInsights.splitAllocations.reduce((sum, row) => sum + row.cents, 0))
+  );
+  expectEq(
+    "mixed split bills follow the plan",
+    mixedOverview.paycheck.split.bills,
+    formatCents(mixedInsights.billsAssignedThisCheckCents)
+  );
+  expectEq(
+    "mixed split invest follows the plan",
+    mixedOverview.paycheck.split.invest,
+    formatCents(mixedInsights.splitPlayLeftoverCents)
+  );
+
+  const manyRecent = ledger();
+  manyRecent.expenses = Array.from({ length: 12 }, (_, index) =>
+    expense({
+      id: `recent-${index}`,
+      amountCents: 100 + index,
+      merchant: `Shop ${index}`,
+      categoryId: "misc",
+      date: "2026-10-01",
+      createdAt: `2026-10-01T00:${String(index).padStart(2, "0")}:00.000Z`,
+    })
+  );
+  const recentPage = payload(manyRecent, "get_app_overview", {}) as { recent: Array<{ merchant: string }> };
+  expectEq("overview keeps the last 10", recentPage.recent.length, 10);
+  expectEq("overview is newest first", recentPage.recent[0]?.merchant, "Shop 11");
+
+  const sensitive = ledger();
+  sensitive.expenses = [
+    {
+      ...expense({
+        id: "cafe",
+        amountCents: 250,
+        merchant: "Corner Cafe",
+        categoryId: "dining",
+        date: "2026-10-04",
+      }),
+      note: "pin 2468",
+    },
+  ];
+  const hiddenBlob = JSON.stringify(payload(sensitive, "get_app_overview", {}));
+  expect("overview drops a pin note", !hiddenBlob.includes("2468") && !/\bpin\b/i.test(hiddenBlob));
+  expect("overview keeps the merchant", hiddenBlob.includes("Corner Cafe"));
+
   const badMonth = executeReadTool(state, "get_transactions", { month: "October" }, NOW);
   expect("bad month is an error", !badMonth.ok && /YYYY-MM/.test(badMonth.error));
   const badDate = executeReadTool(state, "get_transactions", { from: "2026-02-31" }, NOW);
@@ -312,6 +442,8 @@ async function main() {
   expect("backwards range is an error", !backwards.ok);
   const unknownCategory = executeReadTool(state, "get_envelopes", { category: "yacht" }, NOW);
   expect("unknown category is an error", !unknownCategory.ok);
+  const badOverview = executeReadTool(state, "get_app_overview", [], NOW);
+  expect("overview rejects a non-object", !badOverview.ok);
   const unknownTool = executeReadTool(state, "erase_ledger", {}, NOW);
   expect("unknown tool is an error", !unknownTool.ok && /Reads only/.test(unknownTool.error));
   const badLimit = executeReadTool(state, "get_transactions", { limit: 0 }, NOW);
