@@ -216,6 +216,18 @@ function billsSentence(data: unknown): string {
   return unpaid.length ? `Unpaid: ${unpaid.join(", ")}.` : "No unpaid bills.";
 }
 
+function overviewMonthSentence(data: unknown): string {
+  const month = (data as { month?: { label?: string; totalSpent?: string } }).month;
+  if (!month?.label || !month.totalSpent) throw new Error("overview month missing");
+  return `${month.label} so far: spent ${month.totalSpent}.`;
+}
+
+function overviewAppSentence(data: unknown): string {
+  const nav = (data as { app?: { nav?: string } }).app?.nav;
+  if (!nav) throw new Error("overview app map missing");
+  return `${nav} I can read the ledger, propose an edit for you to confirm or undo, remember a short preference, and search the web.`;
+}
+
 const CLIENT_CASES: Array<{
   prompt: string;
   tool: string;
@@ -250,6 +262,20 @@ const CLIENT_CASES: Array<{
     input: { category: "groceries" },
     sentence: spendSentence,
     promptCue: /get_monthly_category_spend/,
+  },
+  {
+    prompt: "How's my month going?",
+    tool: "get_app_overview",
+    input: {},
+    sentence: overviewMonthSentence,
+    promptCue: /get_app_overview first/,
+  },
+  {
+    prompt: "What can you do in this app?",
+    tool: "get_app_overview",
+    input: {},
+    sentence: overviewAppSentence,
+    promptCue: /get_app_overview first/,
   },
 ];
 
@@ -390,6 +416,11 @@ async function main() {
       expect(`${item.prompt} does not substitute checking`, !reply.includes(checking));
     } else {
       expect(`${item.prompt} uses the ledger checking balance`, reply.includes(checking));
+    }
+    if (item.tool === "get_app_overview") {
+      const overviewBody = toolResult?.content ?? "";
+      expect(`${item.prompt} overview omits checking`, !overviewBody.includes(checking) && !overviewBody.includes("checking"));
+      expect(`${item.prompt} overview has no pin`, !/\bpin\b/i.test(overviewBody));
     }
     expect(`${item.prompt} did not write the ledger`, result.unchanged);
     assertNoSecrets(item.prompt, result.logs);

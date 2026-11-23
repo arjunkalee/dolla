@@ -1,6 +1,10 @@
+import { expenseEnvelopeLabel } from "@/lib/categorize";
 import { endOfMonth, formatAsOf, monthKey, startOfMonth, todayISO } from "@/lib/dates";
+import { markBillsPastDuePaid } from "@/lib/freshness";
 import { formatCents } from "@/lib/money";
-import type { AppState, Category, CategoryId, ChatProposal, Expense } from "@/lib/types";
+import { LEFT_NAV_TABS, RIGHT_NAV_TABS } from "@/lib/nav";
+import { computeInsights } from "@/lib/plan";
+import type { AppState, Category, CategoryId, ChatProposal, Expense, Insights } from "@/lib/types";
 import { EDIT_TOOL_DEFINITIONS, EDIT_TOOL_NAMES, executeEditTool } from "./proposals";
 import { HOUR_CACHE_CONTROL } from "./prompt";
 
@@ -16,12 +20,16 @@ export const READ_TOOL_NAMES = [
   "get_transactions",
   "get_bills",
   "get_checking_balance",
+  "get_app_overview",
 ] as const;
 
 export type ReadToolName = (typeof READ_TOOL_NAMES)[number];
 
 export const DEFAULT_TRANSACTION_LIMIT = 25;
 export const MAX_TRANSACTION_LIMIT = 40;
+const OVERVIEW_RECENT_LIMIT = 10;
+const OVERVIEW_BILL_LIMIT = 8;
+const OVERVIEW_TEXT_LIMIT = 80;
 
 const CATEGORY_IDS: readonly CategoryId[] = [
   "rent",
@@ -144,6 +152,16 @@ const TOOL_DEFINITIONS: readonly AssistantTool[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: "get_app_overview",
+    description:
+      "Call this first for a broad question about the user's finances or how to use the app. Read-only snapshot of this month (label, total spent, and each envelope's budget, spent, and remaining), the next payday, the paycheck net, and this paycheck's split (envelope allocations, bills from this check, leftover to invest), upcoming and recently paid bills, the last 10 expenses, and a short map of the screens. A bill due before today counts as paid. Does not include the checking balance. Use a narrower read tool to drill in.",
+    input_schema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
 ];
 
 /** Stable tool list. Read tools stay first. The last client tool carries the 1-hour cache breakpoint. */
@@ -192,6 +210,8 @@ export function executeReadTool(
       return { ok: true, data: billsPayload(state) };
     case "get_checking_balance":
       return { ok: true, data: checkingPayload(state) };
+    case "get_app_overview":
+      return getAppOverview(state, now);
     default:
       return { ok: false, error: "That tool is not available. Reads only." };
   }
@@ -355,6 +375,121 @@ function checkingPayload(state: AppState) {
     updatedAt: state.checkingUpdatedAt ?? null,
     asOf: formatAsOf(state.checkingUpdatedAt),
   };
+}
+
+/**
+ * Screens in the real shell. Tab labels come from `lib/nav.ts`.
+ * Log is the center button. Profile is the header icon. Split lives on Budget.
+ * No balances and no secrets: this object is static.
+ */
+const APP_OVERVIEW = {
+  nav: `${LEFT_NAV_TABS.map((tab) => tab.label).join(", ")}, Log, ${RIGHT_NAV_TABS.map((tab) => tab.label).join(", ")}. Log is the center button, not a tab. Profile is the header icon, not a tab.`,
+  home: "Spent this month, what's next, and the latest purchases.",
+  calendar: "Paydays, bill due dates, and logged spend. No leftover math.",
+  budget: "This month's envelope percentages and Invest, the leftover after those envelopes.",
+  split:
+    "Split lives on Budget. This paycheck goes to bills, then envelope allocations, then leftover to invest. The /split route redirects to Budget.",
+  log: "Log a purchase.",
+  profile: "Paycheck settings, the bill list, CSV import, and assistant usage.",
+  chat: "Exact commands and this assistant.",
+  assistant:
+    "Read tools look up the ledger. propose_* tools open a confirm card and do not save until you confirm; a confirmed change can be undone. remember_fact and forget_fact store a short preference, never a dollar amount. web_search is for public facts outside the app, never this ledger.",
+};
+
+const HIDDEN_OVERVIEW_TEXT = /sk-ant-|api[_ -]?key|\bpin\b|password|secret/i;
+
+function getAppOverview(state: AppState, now: Date): ToolOutcome {
+  const today = todayISO(now);
+  const settled = markBillsPastDuePaid(state, today, now.toISOString()).state;
+  const insights = computeInsights(settled, today, {
+    backend: "file",
+    durable: true,
+    label: "overview",
+  });
+  const order = new Map(settled.categories.map((category) => [category.id, category.sortOrder]));
+  const envelopes = [...insights.categories]
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0) || a.name.localeCompare(b.name))
+    .map((category) => ({
+      name: category.name,
+      budget: formatCents(category.budgetCents),
+      spent: formatCents(category.spentCents),
+      remaining: formatCents(category.remainingCents),
+    }));
+  const bills = settled.bills.map((bill) => ({
+    name: overviewText(bill.name, 60) || "Bill",
+    amount: formatCents(bill.amountCents),
+    dueDate: bill.dueDate,
+    status: bill.paid ? ("paid" as const) : ("upcoming" as const),
+  }));
+  const byDueThenName = (a: { dueDate: string; name: string }, b: { dueDate: string; name: string }) =>
+    a.dueDate.localeCompare(b.dueDate) || a.name.localeCompare(b.name);
+
+  return {
+    ok: true,
+    data: {
+      month: {
+        label: insights.monthLabel,
+        totalSpent: formatCents(insights.monthSpentCents),
+        envelopes,
+      },
+      paycheck: {
+        nextPayday: insights.nextPayday,
+        net: formatCents(insights.paycheckNetCents),
+        split: paycheckSplit(insights),
+      },
+      bills: {
+        upcoming: bills
+          .filter((bill) => bill.status === "upcoming")
+          .sort(byDueThenName)
+          .slice(0, OVERVIEW_BILL_LIMIT),
+        recentlyPaid: bills
+          .filter((bill) => bill.status === "paid")
+          .sort((a, b) => b.dueDate.localeCompare(a.dueDate) || a.name.localeCompare(b.name))
+          .slice(0, OVERVIEW_BILL_LIMIT),
+      },
+      recent: recentExpenses(settled),
+      app: APP_OVERVIEW,
+    },
+  };
+}
+
+/** Split-screen plan for this paycheck. Same fields `computeInsights` already returns. */
+function paycheckSplit(insights: Insights): { envelopes: string; bills: string; invest: string } {
+  const envelopeCents = insights.splitAllocations.reduce((sum, row) => sum + row.cents, 0);
+  return {
+    envelopes: formatCents(envelopeCents),
+    bills: formatCents(insights.billsAssignedThisCheckCents),
+    invest: formatCents(insights.splitPlayLeftoverCents),
+  };
+}
+
+function recentExpenses(state: AppState) {
+  return [...state.expenses]
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+      return a.id < b.id ? 1 : -1;
+    })
+    .slice(0, OVERVIEW_RECENT_LIMIT)
+    .map((expense) => {
+      const merchant = overviewText(expense.merchant);
+      const note = overviewText(expense.note);
+      const row: { date: string; merchant: string; note?: string; amount: string; category: string } = {
+        date: expense.date,
+        merchant: merchant || note || "Expense",
+        amount: formatCents(expense.amountCents),
+        category: expenseEnvelopeLabel(state.categories, expense),
+      };
+      if (note && note !== row.merchant) row.note = note;
+      return row;
+    });
+}
+
+function overviewText(value: string, max = OVERVIEW_TEXT_LIMIT): string {
+  const flat = value.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!flat || HIDDEN_OVERVIEW_TEXT.test(flat)) return "";
+  if (flat.length <= max) return flat;
+  return `${flat.slice(0, max - 3)}...`;
 }
 
 function orderedCategories(state: AppState): Category[] {
